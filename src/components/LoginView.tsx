@@ -4,6 +4,8 @@ import {
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  setPersistence,
+  browserLocalPersistence,
 } from 'firebase/auth';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
@@ -159,6 +161,7 @@ export function LoginView() {
       setLoading(true);
       setErrorMessage(null);
       setIsOperationNotAllowed(false);
+      await setPersistence(auth, browserLocalPersistence);
       await signInWithEmailAndPassword(auth, cleanEmail, loginPassword);
       // onAuthStateChanged in App.tsx automatically switches to Dashboard
     } catch (err: any) {
@@ -205,6 +208,8 @@ export function LoginView() {
       setLoading(true);
       setErrorMessage(null);
       setIsOperationNotAllowed(false);
+
+      await setPersistence(auth, browserLocalPersistence);
 
       // 1. Create user in Firebase Authentication with Email and Password
       const userCredential = await createUserWithEmailAndPassword(
@@ -392,6 +397,8 @@ export function LoginView() {
                 <input
                   id="input-login-email"
                   type="email"
+                  name="email"
+                  autoComplete="username"
                   required
                   value={loginEmail}
                   onChange={(e) => setLoginEmail(e.target.value)}
@@ -424,6 +431,8 @@ export function LoginView() {
                 <input
                   id="input-login-password"
                   type="password"
+                  name="password"
+                  autoComplete="current-password"
                   required
                   value={loginPassword}
                   onChange={(e) => setLoginPassword(e.target.value)}
@@ -466,6 +475,8 @@ export function LoginView() {
                 <input
                   id="input-register-name"
                   type="text"
+                  name="name"
+                  autoComplete="name"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -484,6 +495,8 @@ export function LoginView() {
                 <input
                   id="input-register-email"
                   type="email"
+                  name="email"
+                  autoComplete="email"
                   required
                   value={registerEmail}
                   onChange={(e) => setRegisterEmail(e.target.value)}
@@ -502,6 +515,8 @@ export function LoginView() {
                 <input
                   id="input-register-password"
                   type="password"
+                  name="password"
+                  autoComplete="new-password"
                   required
                   minLength={6}
                   value={registerPassword}
@@ -521,6 +536,8 @@ export function LoginView() {
                 <input
                   id="input-register-confirm"
                   type="password"
+                  name="confirmPassword"
+                  autoComplete="new-password"
                   required
                   minLength={6}
                   value={confirmPassword}

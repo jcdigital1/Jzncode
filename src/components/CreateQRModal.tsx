@@ -103,8 +103,8 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
       // 3. Criar URL dinâmica permanente & gerar QR baseado exclusivamente nela
       const intermediateUrl = `${window.location.origin}/q/${slug}`;
       const [pngUrl, svgStr] = await Promise.all([
-        generateQRCodeDataUrl(intermediateUrl, 1024),
-        generateQRCodeSvg(intermediateUrl),
+        generateQRCodeDataUrl(intermediateUrl, cleanName, 1024),
+        generateQRCodeSvg(intermediateUrl, cleanName),
       ]);
 
       setQrPngUrl(pngUrl);

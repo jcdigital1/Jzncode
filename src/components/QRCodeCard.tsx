@@ -39,7 +39,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
     let active = true;
     async function makeQR() {
       try {
-        const url = await generateQRCodeDataUrl(intermediateUrl, 480);
+        const url = await generateQRCodeDataUrl(intermediateUrl, qr.name, 480);
         if (active) {
           setQrDataUrl(url);
         }
@@ -51,7 +51,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
     return () => {
       active = false;
     };
-  }, [intermediateUrl]);
+  }, [intermediateUrl, qr.name]);
 
   // Close download dropdown when clicking outside
   useEffect(() => {
@@ -70,7 +70,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
 
   const handleDownloadPng = async () => {
     try {
-      const fullResUrl = await generateQRCodeDataUrl(intermediateUrl, 1024);
+      const fullResUrl = await generateQRCodeDataUrl(intermediateUrl, qr.name, 1024);
       const filename = getQRCodeFilename(qr.name, 'png');
       downloadDataUrl(fullResUrl, filename);
       setDownloadMenuOpen(false);
@@ -81,7 +81,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
 
   const handleDownloadSvg = async () => {
     try {
-      const svgStr = await generateQRCodeSvg(intermediateUrl);
+      const svgStr = await generateQRCodeSvg(intermediateUrl, qr.name);
       const filename = getQRCodeFilename(qr.name, 'svg');
       downloadSvg(svgStr, filename);
       setDownloadMenuOpen(false);
