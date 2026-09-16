@@ -1,1 +1,17 @@
 @import "tailwindcss";
+
+/* Trava zoom involuntário e duplo clique no mobile */
+html, body {
+  touch-action: manipulation;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+/* Evita que o iOS/Android dê zoom automático ao focar em inputs/textareas */
+@media screen and (max-width: 768px) {
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+}
