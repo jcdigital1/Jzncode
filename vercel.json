@@ -1,0 +1,26 @@
+{
+  "version": 2,
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/q/:slug",
+      "destination": "/api/q?slug=:slug"
+    },
+    {
+      "source": "/api/google-place/resolve",
+      "destination": "/api/google-place-resolve"
+    },
+    {
+      "source": "/api/qr/:slug",
+      "destination": "/api/qr-details?slug=:slug"
+    },
+    {
+      "source": "/api/health",
+      "destination": "/api/health"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}

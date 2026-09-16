@@ -6,6 +6,7 @@ import {
   generateSlug,
   generateQRId,
   normalizeUrl,
+  getDynamicQRUrl,
   generateQRCodeDataUrl,
   generateQRCodeSvg,
   getQRCodeFilename,
@@ -82,11 +83,10 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
 
       // 1. Gerar slug único
       const slug = generateSlug(8);
-      const qrId = generateQRId();
 
       // 2. Salvar no Firestore
       const qrData: DynamicQRCode = {
-        id: qrId,
+        id: slug,
         userId: currentUser.uid,
         name: cleanName,
         slug: slug,
@@ -101,7 +101,7 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
       await setDoc(docRef, qrData);
 
       // 3. Criar URL dinâmica permanente & gerar QR baseado exclusivamente nela
-      const intermediateUrl = `${window.location.origin}/q/${slug}`;
+      const intermediateUrl = getDynamicQRUrl(slug);
       const [pngUrl, svgStr] = await Promise.all([
         generateQRCodeDataUrl(intermediateUrl, cleanName, 1024),
         generateQRCodeSvg(intermediateUrl, cleanName),

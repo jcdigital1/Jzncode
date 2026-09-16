@@ -25,7 +25,6 @@ const API_KEY = firebaseConfig.apiKey || 'AIzaSyAjVcB10uYqQQGodk1nBeL9AWjudNl2Jo
 
 /**
  * Valida se a URL é estritamente HTTP ou HTTPS para segurança.
- * Rejeita protocolos perigosos como javascript:, data:, vbscript:, etc.
  */
 function isValidRedirectUrl(urlStr: string): boolean {
   if (!urlStr || typeof urlStr !== 'string') return false;
@@ -150,13 +149,57 @@ async function fetchQRCodeFromFirestore(slug: string) {
   const res = await fetch(docUrl);
 
   if (res.status === 404) {
-    return { notFound: true, data: null };
+    try {
+      const queryUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents:runQuery?key=${API_KEY}`;
+      const queryRes = await fetch(queryUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          structuredQuery: {
+            from: [{ collectionId: 'dynamicQRCodes' }],
+            where: {
+              fieldFilter: {
+                field: { fieldPath: 'slug' },
+                op: 'EQUAL',
+                value: { stringValue: slug },
+              },
+            },
+            limit: 1,
+          },
+        }),
+      });
+
+      if (queryRes.ok) {
+        const queryResults = await queryRes.json();
+        if (Array.isArray(queryResults) && queryResults.length > 0 && queryResults[0].document) {
+          const docItem = queryResults[0].document;
+          const fields = docItem.fields || {};
+          const docId = docItem.name ? docItem.name.split('/').pop() : slug;
+          return {
+            notFound: false,
+            error: false,
+            docId,
+            data: {
+              slug: fields.slug?.stringValue || slug,
+              destinationUrl: fields.destinationUrl?.stringValue || '',
+              active: fields.active ? fields.active.booleanValue !== false : true,
+              name: fields.name?.stringValue || '',
+              scansCount: fields.scansCount?.integerValue ? parseInt(fields.scansCount.integerValue, 10) : 0,
+              lastScanAt: fields.lastScanAt?.timestampValue || null,
+            },
+          };
+        }
+      }
+    } catch (e) {
+      console.warn('[JZN CODE] Erro no fallback runQuery:', e);
+    }
+    return { notFound: true, error: false, docId: null, data: null };
   }
 
   if (!res.ok) {
     const errText = await res.text().catch(() => '');
     console.error(`[JZN CODE] Erro Firestore status ${res.status}:`, errText);
-    return { error: true, data: null };
+    return { notFound: false, error: true, docId: null, data: null };
   }
 
   const json = await res.json();
@@ -165,18 +208,70 @@ async function fetchQRCodeFromFirestore(slug: string) {
   return {
     notFound: false,
     error: false,
+    docId: slug,
     data: {
       slug: fields.slug?.stringValue || slug,
       destinationUrl: fields.destinationUrl?.stringValue || '',
       active: fields.active ? fields.active.booleanValue !== false : true,
       name: fields.name?.stringValue || '',
+      scansCount: fields.scansCount?.integerValue ? parseInt(fields.scansCount.integerValue, 10) : 0,
+      lastScanAt: fields.lastScanAt?.timestampValue || null,
     },
   };
+}
+
+/**
+ * Registra leitura de forma atômica no Firestore sem atrasar o redirecionamento
+ */
+async function recordScanInFirestore(slug: string) {
+  try {
+    const commitUrl = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents:commit?key=${API_KEY}`;
+    await fetch(commitUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        writes: [
+          {
+            transform: {
+              document: `projects/${PROJECT_ID}/databases/${DATABASE_ID}/documents/dynamicQRCodes/${slug}`,
+              fieldTransforms: [
+                {
+                  fieldPath: 'scansCount',
+                  increment: { integerValue: '1' },
+                },
+                {
+                  fieldPath: 'lastScanAt',
+                  setToServerValue: 'REQUEST_TIME',
+                },
+              ],
+            },
+          },
+        ],
+      }),
+    });
+  } catch (err) {
+    console.warn('[JZN CODE] Aviso ao registrar leitura no Firestore:', err);
+  }
+}
+
+/**
+ * Limpa e formata strings extraídas do Google Maps
+ */
+function cleanText(str: string): string {
+  return (str || '')
+    .replace(/\+/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  app.use(express.json());
 
   // 1. HEALTHCHECK
   app.get('/api/health', (_req, res) => {
@@ -204,7 +299,13 @@ async function startServer() {
         return res.status(500).send(renderErrorHtml('Erro temporário', 'Não foi possível consultar o destino. Tente novamente em instantes.'));
       }
 
-      const { destinationUrl, active } = result.data;
+      const { active } = result.data;
+      let destinationUrl = (result.data.destinationUrl || '').trim();
+
+      // Normaliza URL caso falte http/https
+      if (destinationUrl && !/^https?:\/\//i.test(destinationUrl)) {
+        destinationUrl = `https://${destinationUrl}`;
+      }
 
       // Verifica se está ativo
       if (active === false) {
@@ -216,10 +317,11 @@ async function startServer() {
         return res.status(400).send(renderErrorHtml('Destino Inválido', 'O link de destino deste QR Code é inválido ou não foi configurado.'));
       }
 
+      // Incrementa o contador de leitura e data/hora em segundo plano (não atrasa o redirect)
+      const targetDocId = result.docId || slug;
+      recordScanInFirestore(targetDocId).catch(() => {});
+
       // REDIRECIONAMENTO HTTP 302 IMEDIATO
-      // Headers para garantir que o navegador NUNCA faça cache do redirecionamento
-      // Dessa forma, quando o usuário altera o destino no JZN CODE, o próximo escaneamento
-      // do mesmo QR Code já abrirá o novo destino sem nenhum conflito de cache.
       res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
       res.setHeader('Pragma', 'no-cache');
       res.setHeader('Expires', '0');
@@ -231,7 +333,7 @@ async function startServer() {
     }
   });
 
-  // 3. API endpoint para consultar destino se necessário
+  // 3. API endpoint para consultar dados de QR Code
   app.get('/api/qr/:slug', async (req, res) => {
     const slug = (req.params.slug || '').trim();
     if (!slug) return res.status(400).json({ error: 'Slug obrigatório' });
@@ -247,13 +349,191 @@ async function startServer() {
         destinationUrl: result.data.destinationUrl,
         active: result.data.active,
         name: result.data.name,
+        scansCount: result.data.scansCount,
+        lastScanAt: result.data.lastScanAt,
       });
     } catch (err: any) {
       return res.status(500).json({ error: err.message });
     }
   });
 
-  // 4. VITE MIDDLEWARE (DEV) OU STATIC ASSETS (PROD)
+  // 4. API GERADOR DE AVALIAÇÃO GOOGLE: RESOLUÇÃO DE LINK & PLACE ID
+  app.post('/api/google-place/resolve', async (req, res) => {
+    const rawInput = (req.body?.url || req.body?.link || '').trim();
+
+    if (!rawInput) {
+      return res.status(400).json({
+        success: false,
+        error: 'Por favor, cole o link da empresa no Google Maps.',
+      });
+    }
+
+    try {
+      // Caso 1: Usuário colou diretamente um Place ID válido (prefixo ChIJ)
+      if (/^ChIJ[a-zA-Z0-9_-]{20,}$/.test(rawInput)) {
+        const placeId = rawInput;
+        const reviewUrl = `https://search.google.com/local/writereview?placeid=${placeId}`;
+        return res.json({
+          success: true,
+          placeId,
+          name: 'Empresa no Google',
+          address: 'Google Maps Local',
+          city: '',
+          reviewUrl,
+        });
+      }
+
+      // Caso 2: URL com placeid= diretamente (ex: search.google.com/local/writereview?placeid=...)
+      const directPlaceIdMatch = rawInput.match(/placeid=([a-zA-Z0-9_-]+)/i) || rawInput.match(/query_place_id=([a-zA-Z0-9_-]+)/i);
+      if (directPlaceIdMatch && directPlaceIdMatch[1]) {
+        const placeId = directPlaceIdMatch[1];
+        const reviewUrl = `https://search.google.com/local/writereview?placeid=${placeId}`;
+        return res.json({
+          success: true,
+          placeId,
+          name: 'Empresa Google',
+          address: 'Endereço registrado no Google',
+          city: '',
+          reviewUrl,
+        });
+      }
+
+      // Caso 3: URL encurtada ou completa do Google Maps (maps.app.goo.gl, goo.gl, google.com/maps)
+      let targetUrl = rawInput;
+      if (!/^https?:\/\//i.test(targetUrl)) {
+        targetUrl = `https://${targetUrl}`;
+      }
+
+      // Faz fetch server-side seguindo redirects para obter a URL canônica e HTML
+      const response = await fetch(targetUrl, {
+        method: 'GET',
+        redirect: 'follow',
+        headers: {
+          'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+          'Accept-Language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          Accept:
+            'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        },
+      });
+
+      const finalUrl = response.url || targetUrl;
+      const html = await response.text().catch(() => '');
+
+      // Extrai Place ID (ChIJ...)
+      // Procura primeiro no URL final (ex: !1sChIJ... ou data=!4m...1sChIJ...)
+      let placeId = '';
+      const urlPlaceIdMatch =
+        finalUrl.match(/!1s(ChIJ[a-zA-Z0-9_-]{20,})/i) ||
+        finalUrl.match(/place_id=([a-zA-Z0-9_-]{20,})/i);
+
+      if (urlPlaceIdMatch && urlPlaceIdMatch[1]) {
+        placeId = urlPlaceIdMatch[1];
+      }
+
+      // Se não encontrou no URL, procura no HTML da página do Google Maps
+      if (!placeId && html) {
+        const htmlPlaceIdMatch =
+          html.match(/["'](ChIJ[a-zA-Z0-9_-]{22,})["']/i) ||
+          html.match(/data-pid=["']([a-zA-Z0-9_-]+)["']/i) ||
+          html.match(/\["place_id","(ChIJ[a-zA-Z0-9_-]+)"\]/i) ||
+          html.match(/search\.google\.com\/local\/writereview\?placeid=([a-zA-Z0-9_-]+)/i);
+
+        if (htmlPlaceIdMatch && htmlPlaceIdMatch[1]) {
+          placeId = htmlPlaceIdMatch[1];
+        }
+      }
+
+      // Extrai Nome da Empresa
+      let businessName = '';
+      // 1. Do path /maps/place/Nome+Da+Empresa/
+      const placePathMatch = finalUrl.match(/\/maps\/place\/([^/@]+)/i);
+      if (placePathMatch && placePathMatch[1]) {
+        businessName = cleanText(decodeURIComponent(placePathMatch[1]));
+      }
+
+      // 2. Do <meta property="og:title"> ou <title>
+      if (!businessName && html) {
+        const ogTitleMatch = html.match(/<meta property=["']og:title["'] content=["']([^"']+)["']/i);
+        if (ogTitleMatch && ogTitleMatch[1]) {
+          businessName = cleanText(ogTitleMatch[1].replace(/ - Google Maps.*$/i, ''));
+        } else {
+          const titleMatch = html.match(/<title>([^<]+)<\/title>/i);
+          if (titleMatch && titleMatch[1]) {
+            businessName = cleanText(titleMatch[1].replace(/ - Google Maps.*$/i, ''));
+          }
+        }
+      }
+
+      if (!businessName) {
+        businessName = 'Empresa no Google';
+      }
+
+      // Extrai Endereço & Cidade
+      let address = '';
+      let city = '';
+
+      if (html) {
+        const ogDescMatch =
+          html.match(/<meta property=["']og:description["'] content=["']([^"']+)["']/i) ||
+          html.match(/<meta name=["']description["'] content=["']([^"']+)["']/i);
+
+        if (ogDescMatch && ogDescMatch[1]) {
+          const desc = cleanText(ogDescMatch[1]);
+          // Google costuma colocar o endereço completo ou avaliações no description
+          // Ex: "Rua Exemplo, 123 - Centro, Patrocínio - MG, 38740-000 · ★★★★★"
+          const cleanDesc = desc.replace(/[·•★].*$/, '').trim();
+          if (cleanDesc.length > 5) {
+            address = cleanDesc;
+            // Tenta isolar Cidade - UF
+            const cityMatch = cleanDesc.match(/,\s*([A-Za-zÀ-ÿ\s]+(?:\s*-\s*[A-Z]{2})?)(?:,|$)/);
+            if (cityMatch && cityMatch[1]) {
+              city = cleanText(cityMatch[1]);
+            }
+          }
+        }
+      }
+
+      // Se nenhum Place ID foi extraído, mas temos nome e coordenadas:
+      if (!placeId) {
+        // Tenta extrair Place ID alternativo via busca no HTML
+        const chijFallback = html.match(/ChIJ[a-zA-Z0-9_-]{20,}/);
+        if (chijFallback && chijFallback[0]) {
+          placeId = chijFallback[0];
+        }
+      }
+
+      if (!placeId) {
+        return res.status(422).json({
+          success: false,
+          error:
+            'Não foi possível identificar o Place ID deste link do Google Maps. Certifique-se de compartilhar o link do estabelecimento comercial no Google Maps.',
+          urlResolved: finalUrl,
+          name: businessName,
+        });
+      }
+
+      const reviewUrl = `https://search.google.com/local/writereview?placeid=${placeId}`;
+
+      return res.json({
+        success: true,
+        placeId,
+        name: businessName,
+        address: address || 'Endereço identificado no Google Maps',
+        city: city || '',
+        reviewUrl,
+        finalUrl,
+      });
+    } catch (err: any) {
+      console.error('[JZN CODE] Erro ao resolver link Google Maps:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Falha ao analisar o link do Google Maps. Verifique se o link está correto.',
+      });
+    }
+  });
+
+  // 5. VITE MIDDLEWARE (DEV) OU STATIC ASSETS (PROD)
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

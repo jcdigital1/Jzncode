@@ -63,17 +63,32 @@ export function EditDestinationModal({
       setLoading(true);
       setError(null);
 
-      // Document reference in Firestore
-      const docRef = doc(db, 'dynamicQRCodes', qr.slug || qr.id);
+      // Document reference in Firestore (tenta pelo slug primeiro, depois pelo id se diferente)
+      const targetDocId = qr.slug || qr.id;
+      const docRef = doc(db, 'dynamicQRCodes', targetDocId);
 
       // NUNCA alterar ID, slug ou createdAt!
       // Atualiza APENAS name, destinationUrl, active e updatedAt
-      await updateDoc(docRef, {
-        name: cleanName,
-        destinationUrl: cleanDest,
-        active: Boolean(active),
-        updatedAt: serverTimestamp(),
-      });
+      try {
+        await updateDoc(docRef, {
+          name: cleanName,
+          destinationUrl: cleanDest,
+          active: Boolean(active),
+          updatedAt: serverTimestamp(),
+        });
+      } catch (firstErr: any) {
+        if (qr.id && qr.slug && qr.id !== qr.slug) {
+          const fallbackDocRef = doc(db, 'dynamicQRCodes', qr.id);
+          await updateDoc(fallbackDocRef, {
+            name: cleanName,
+            destinationUrl: cleanDest,
+            active: Boolean(active),
+            updatedAt: serverTimestamp(),
+          });
+        } else {
+          throw firstErr;
+        }
+      }
 
       const updatedObj: DynamicQRCode = {
         ...qr,

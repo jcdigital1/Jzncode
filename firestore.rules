@@ -8,19 +8,31 @@ service cloud.firestore {
 
     // Coleção de QR Codes Dinâmicos
     match /dynamicQRCodes/{qrId} {
-      // Leitura pontual de 1 documento permitida para o redirecionamento público (/q/:slug)
-      allow get: if true;
-
-      // Consulta/Listagem restrita a usuários autenticados
-      allow list: if request.auth != null;
+      // Leitura pública permitida para o redirecionamento imediato (/q/:slug)
+      allow read: if true;
 
       // Criação permitida se o userId pertencer ao usuário autenticado
       allow create: if request.auth != null
         && request.resource.data.userId == request.auth.uid;
 
-      // Edição e exclusão permitidas apenas pelo proprietário do documento
-      allow update, delete: if request.auth != null
+      // Edição pelo proprietário OU incremento de leitura (scansCount/lastScanAt) ao escanear
+      allow update: if (
+        request.auth != null && resource.data.userId == request.auth.uid
+      ) || (
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['scansCount', 'lastScanAt'])
+      );
+
+      // Exclusão permitida apenas pelo proprietário
+      allow delete: if request.auth != null
         && resource.data.userId == request.auth.uid;
+    }
+
+    // Coleção de Empresas Google Avaliações (Minhas Empresas)
+    match /googleBusinesses/{businessId} {
+      allow read, write: if request.auth != null && (
+        (resource == null && request.resource.data.userId == request.auth.uid) ||
+        (resource != null && resource.data.userId == request.auth.uid)
+      );
     }
   }
 }

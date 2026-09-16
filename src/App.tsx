@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from 'react';
-import { onAuthStateChanged, signOut, User } from 'firebase/auth';
+import { onAuthStateChanged, signOut, sendPasswordResetEmail, User } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { DynamicQRCode } from './types';
@@ -9,6 +9,7 @@ import { QRCodeCard } from './components/QRCodeCard';
 import { CreateQRModal } from './components/CreateQRModal';
 import { EditDestinationModal } from './components/EditDestinationModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
+import { GoogleReviewGenerator } from './components/GoogleReviewGenerator';
 import {
   QrCode,
   Plus,
@@ -17,6 +18,18 @@ import {
   X,
   ChevronDown,
   User as UserIcon,
+  LayoutDashboard,
+  ListFilter,
+  Star,
+  Shield,
+  Smartphone,
+  ExternalLink,
+  Copy,
+  Check,
+  Sparkles,
+  ArrowRight,
+  Mail,
+  Lock,
 } from 'lucide-react';
 
 /**
@@ -42,10 +55,15 @@ function getSlugFromCurrentUrl(): string | null {
 
 const PAGE_SIZE = 20;
 
+type NavigationTab = 'dashboard' | 'qrcodes' | 'google' | 'account';
+
 export default function App() {
   const [activeSlug, setActiveSlug] = useState<string | null>(() => getSlugFromCurrentUrl());
   const [user, setUser] = useState<User | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Active Menu Tab
+  const [activeTab, setActiveTab] = useState<NavigationTab>('dashboard');
 
   // User's Dynamic QR Codes Data
   const [qrCodes, setQrCodes] = useState<DynamicQRCode[]>([]);
@@ -60,6 +78,10 @@ export default function App() {
   const [isCreateOpen, setIsCreateOpen] = useState(false);
   const [editingQR, setEditingQR] = useState<DynamicQRCode | null>(null);
   const [deletingQR, setDeletingQR] = useState<DynamicQRCode | null>(null);
+
+  // Account reset password status
+  const [resetEmailSent, setResetEmailSent] = useState(false);
+  const [resetEmailLoading, setResetEmailLoading] = useState(false);
 
   // Listen to browser navigation
   useEffect(() => {
@@ -114,6 +136,7 @@ export default function App() {
             createdAt: data.createdAt || 0,
             updatedAt: data.updatedAt || 0,
             scansCount: data.scansCount || 0,
+            lastScanAt: data.lastScanAt || null,
           });
         });
 
@@ -154,8 +177,12 @@ export default function App() {
     [qrCodes]
   );
   const inactiveCount = totalCount - activeCount;
+  const totalScans = useMemo(
+    () => qrCodes.reduce((acc, q) => acc + (q.scansCount || 0), 0),
+    [qrCodes]
+  );
 
-  // Filtered QR codes by status and search term (primarily by name)
+  // Filtered QR codes by status and search term (by name or code/slug)
   const filteredQRCodes = useMemo(() => {
     let list = qrCodes;
 
@@ -166,13 +193,14 @@ export default function App() {
       list = list.filter((item) => item.active === false);
     }
 
-    // Search filter (primarily by name)
+    // Search filter (by name or code)
     const term = searchTerm.trim().toLowerCase();
     if (term) {
       list = list.filter(
         (item) =>
           item.name.toLowerCase().includes(term) ||
-          item.slug.toLowerCase().includes(term)
+          item.slug.toLowerCase().includes(term) ||
+          item.destinationUrl.toLowerCase().includes(term)
       );
     }
 
@@ -188,6 +216,21 @@ export default function App() {
 
   const handleLoadMore = () => {
     setVisibleCount((prev) => prev + PAGE_SIZE);
+  };
+
+  // Password reset from account view
+  const handleSendPasswordReset = async () => {
+    if (!user?.email) return;
+    try {
+      setResetEmailLoading(true);
+      await sendPasswordResetEmail(auth, user.email);
+      setResetEmailSent(true);
+      setTimeout(() => setResetEmailSent(false), 5000);
+    } catch (err) {
+      console.error('Erro ao enviar e-mail de recuperação:', err);
+    } finally {
+      setResetEmailLoading(false);
+    }
   };
 
   // 1. PUBLIC REDIRECT ROUTE (/q/:slug) - No login required
@@ -215,316 +258,580 @@ export default function App() {
     return <LoginView />;
   }
 
-  // User display title
   const userName = user.displayName || user.email?.split('@')[0] || 'Usuário';
 
-  // 4. MAIN DASHBOARD VIEW (MOBILE-FIRST)
+  // 4. MAIN APP SHELL
   return (
     <div
       id="dashboard-root"
       className="min-h-screen bg-[#070a12] text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white relative font-sans max-w-full overflow-x-hidden"
     >
-      {/* 2. CABEÇALHO COMPACTO */}
+      {/* CABEÇALHO COMPACTO & PROFISSIONAL */}
       <header
         id="main-header"
-        className="sticky top-0 z-30 bg-[#0d121f]/95 backdrop-blur-md border-b border-slate-800/90 px-4 sm:px-6 py-2.5 max-w-full"
+        className="sticky top-0 z-40 bg-[#0d121f]/95 backdrop-blur-md border-b border-slate-800/90 px-3 sm:px-6 py-2.5 max-w-full"
       >
-        <div className="max-w-6xl mx-auto flex items-center justify-between gap-3">
-          {/* Esquerda: Ícone + JZN CODE + abaixo pequeno: QR Codes Dinâmicos */}
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-blue-600/30 shrink-0">
-              <QrCode className="w-4 h-4" />
+        <div className="max-w-6xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
+          {/* Logo & Identidade */}
+          <div
+            onClick={() => setActiveTab('dashboard')}
+            className="flex items-center gap-2 cursor-pointer select-none shrink-0"
+          >
+            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-blue-600/30">
+              <QrCode className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
             </div>
-            <div className="min-w-0">
-              <div className="font-mono text-base font-black tracking-tight leading-tight flex items-center gap-1">
+            <div>
+              <div className="font-mono text-sm sm:text-base font-black tracking-tight leading-tight flex items-center gap-1">
                 <span className="text-blue-400">JZN</span>
                 <span className="text-white">CODE</span>
               </div>
-              <p className="text-[10px] text-slate-400 leading-none truncate">
-                QR Codes Dinâmicos
+              <p className="text-[9px] sm:text-[10px] text-slate-400 leading-none">
+                Gerenciador Dinâmico
               </p>
             </div>
           </div>
 
-          {/* Direita: Perfil do usuário + Botão Sair */}
-          <div className="flex items-center gap-2 shrink-0">
-            {/* Perfil */}
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-[#050811] border border-slate-800 text-slate-300 text-xs max-w-[130px] sm:max-w-[200px]">
-              <UserIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-              <span className="truncate font-medium text-[11px] sm:text-xs">
-                {userName}
-              </span>
-            </div>
-
-            {/* Botão Sair */}
+          {/* Navegação Principal Desktop */}
+          <nav className="hidden md:flex items-center gap-1 bg-[#050811] p-1 rounded-xl border border-slate-800">
             <button
-              id="btn-logout"
               type="button"
-              onClick={() => signOut(auth)}
-              title="Sair da conta"
-              className="p-2 rounded-lg bg-[#050811] hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800 transition-colors cursor-pointer flex items-center gap-1.5 text-xs font-semibold"
+              onClick={() => setActiveTab('dashboard')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'dashboard'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
             >
-              <LogOut className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Sair</span>
+              <LayoutDashboard className="w-3.5 h-3.5" />
+              <span>Dashboard</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('qrcodes')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'qrcodes'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <ListFilter className="w-3.5 h-3.5" />
+              <span>Meus QR Codes</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsCreateOpen(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-300 hover:text-blue-200 hover:bg-blue-950/50 border border-blue-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>+ Novo QR Code</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('google')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'google'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-amber-400 hover:text-amber-300 hover:bg-slate-800/50'
+              }`}
+            >
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              <span>⭐ Avaliação Google</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveTab('account')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'account'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <UserIcon className="w-3.5 h-3.5" />
+              <span>Minha Conta</span>
+            </button>
+          </nav>
+
+          {/* Ações Rápidas Direita (+ Novo QR Code Mobile & Logout) */}
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            {/* Botão + Novo QR Code no cabeçalho em mobile */}
+            <button
+              type="button"
+              onClick={() => setIsCreateOpen(true)}
+              className="md:hidden py-1.5 px-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1 shadow-sm shadow-blue-600/30 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Novo</span>
+            </button>
+
+            {/* Perfil / Sair */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('account')}
+              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-xl bg-[#050811] hover:bg-slate-800 text-slate-300 border border-slate-800 flex items-center gap-1.5 text-xs font-medium cursor-pointer"
+            >
+              <UserIcon className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <span className="hidden sm:inline max-w-[100px] truncate">{userName}</span>
             </button>
           </div>
         </div>
+
+        {/* NAVEGAÇÃO COMPACTA PARA CELULAR (ABAIXO DO HEADER) */}
+        <div className="flex md:hidden items-center justify-around gap-1 pt-2 border-t border-slate-800/60 mt-2 max-w-full overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => setActiveTab('dashboard')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-[11px] font-semibold flex flex-col items-center gap-0.5 transition-colors ${
+              activeTab === 'dashboard'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'text-slate-400'
+            }`}
+          >
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span>Dashboard</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('qrcodes')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-[11px] font-semibold flex flex-col items-center gap-0.5 transition-colors ${
+              activeTab === 'qrcodes'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'text-slate-400'
+            }`}
+          >
+            <ListFilter className="w-3.5 h-3.5" />
+            <span>QR Codes</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('google')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-[11px] font-semibold flex flex-col items-center gap-0.5 transition-colors ${
+              activeTab === 'google'
+                ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30'
+                : 'text-amber-400/80'
+            }`}
+          >
+            <Star className="w-3.5 h-3.5 fill-amber-400" />
+            <span>Avaliação</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('account')}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-[11px] font-semibold flex flex-col items-center gap-0.5 transition-colors ${
+              activeTab === 'account'
+                ? 'bg-blue-600/20 text-blue-400 border border-blue-500/30'
+                : 'text-slate-400'
+            }`}
+          >
+            <UserIcon className="w-3.5 h-3.5" />
+            <span>Conta</span>
+          </button>
+        </div>
       </header>
 
-      {/* CONTEÚDO PRINCIPAL */}
+      {/* CONTEÚDO PRINCIPAL DINÂMICO DE ACORDO COM A ABA ATIVA */}
       <main
         id="main-content"
-        className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-5 sm:py-6 space-y-4 max-w-full"
+        className="flex-1 max-w-6xl w-full mx-auto px-3 sm:px-6 py-4 sm:py-6 space-y-5 max-w-full"
       >
-        {/* BOTÃO PRINCIPAL GRANDE: + NOVO QR CODE */}
-        <div className="w-full">
-          <button
-            id="btn-novo-qr-code"
-            type="button"
-            onClick={() => setIsCreateOpen(true)}
-            className="w-full py-3.5 px-5 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base flex items-center justify-center gap-2.5 shadow-xl shadow-blue-600/30 transition-all active:scale-[0.99] cursor-pointer"
-          >
-            <Plus className="w-5 h-5 stroke-[3]" />
-            <span>+ NOVO QR CODE</span>
-          </button>
-        </div>
+        {/* ========================================================
+            ABA 1: DASHBOARD
+           ======================================================== */}
+        {activeTab === 'dashboard' && (
+          <div className="space-y-5 animate-fadeIn">
+            {/* DASHBOARD COMPACTO: ÚNICO CARD HORIZONTAL DIVIDIDO EM 4 INFORMAÇÕES */}
+            <div className="bg-[#0d121f] border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-lg">
+              <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3 flex items-center justify-between">
+                <span>Resumo da Plataforma</span>
+                <span className="text-[10px] text-blue-400 font-mono">Sincronizado</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-0 sm:divide-x divide-slate-800/80">
+                {/* 1. Total QR Codes */}
+                <div className="px-2 sm:px-4 py-1">
+                  <span className="text-[11px] font-semibold text-slate-400 block">QR Codes</span>
+                  <span className="text-2xl sm:text-3xl font-black text-white">{totalCount}</span>
+                </div>
 
-        {/* 3. PESQUISA */}
-        <div className="w-full">
-          <div className="relative w-full">
-            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
-            <input
-              id="input-pesquisa"
-              type="text"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="🔎 Pesquisar QR Code pelo nome…"
-              className="w-full pl-10 pr-9 py-2.5 bg-[#0d121f] border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
-            />
-            {searchTerm && (
-              <button
-                id="btn-clear-search"
-                type="button"
-                onClick={() => setSearchTerm('')}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-        </div>
+                {/* 2. Ativos */}
+                <div className="px-2 sm:px-4 py-1">
+                  <span className="text-[11px] font-semibold text-emerald-400 block">Ativos</span>
+                  <span className="text-2xl sm:text-3xl font-black text-emerald-400">{activeCount}</span>
+                </div>
 
-        {/* 4. RESUMO / INDICADORES (FUNCIONAM COMO FILTROS) */}
-        <div
-          id="filtros-resumo"
-          className="flex items-center gap-2 overflow-x-auto pb-1 max-w-full"
-        >
-          {/* Todos */}
-          <button
-            id="filtro-todos"
-            type="button"
-            onClick={() => setFilterStatus('all')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border ${
-              filterStatus === 'all'
-                ? 'bg-blue-600 border-blue-500 text-white shadow-md shadow-blue-600/30'
-                : 'bg-[#0d121f] border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span>Todos</span>
-            <span
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
-                filterStatus === 'all'
-                  ? 'bg-blue-800 text-white'
-                  : 'bg-[#050811] text-slate-300'
-              }`}
-            >
-              {totalCount}
-            </span>
-          </button>
+                {/* 3. Inativos */}
+                <div className="px-2 sm:px-4 py-1">
+                  <span className="text-[11px] font-semibold text-amber-400 block">Inativos</span>
+                  <span className="text-2xl sm:text-3xl font-black text-amber-400">{inactiveCount}</span>
+                </div>
 
-          {/* Ativos */}
-          <button
-            id="filtro-ativos"
-            type="button"
-            onClick={() => setFilterStatus('active')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border ${
-              filterStatus === 'active'
-                ? 'bg-emerald-600 border-emerald-500 text-white shadow-md shadow-emerald-600/30'
-                : 'bg-[#0d121f] border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span>Ativos</span>
-            <span
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
-                filterStatus === 'active'
-                  ? 'bg-emerald-800 text-white'
-                  : 'bg-[#050811] text-slate-300'
-              }`}
-            >
-              {activeCount}
-            </span>
-          </button>
-
-          {/* Inativos */}
-          <button
-            id="filtro-inativos"
-            type="button"
-            onClick={() => setFilterStatus('inactive')}
-            className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer border ${
-              filterStatus === 'inactive'
-                ? 'bg-amber-600 border-amber-500 text-white shadow-md shadow-amber-600/30'
-                : 'bg-[#0d121f] border-slate-800 text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            <span className="w-2 h-2 rounded-full bg-amber-400" />
-            <span>Inativos</span>
-            <span
-              className={`px-1.5 py-0.5 rounded-md text-[10px] font-mono ${
-                filterStatus === 'inactive'
-                  ? 'bg-amber-800 text-white'
-                  : 'bg-[#050811] text-slate-300'
-              }`}
-            >
-              {inactiveCount}
-            </span>
-          </button>
-        </div>
-
-        {/* 5. LISTA / GRID DE CARDS DOS QR CODES */}
-        {dataLoading ? (
-          <div id="loading-qr-grid" className="py-16 text-center space-y-2.5 font-mono">
-            <div className="w-8 h-8 border-2 border-blue-500/20 border-t-blue-500 rounded-full animate-spin mx-auto" />
-            <p className="text-xs text-slate-400">Carregando seus QR Codes...</p>
-          </div>
-        ) : filteredQRCodes.length === 0 ? (
-          <div
-            id="empty-state-card"
-            className="text-center py-12 px-4 bg-[#0d121f] border border-slate-800 rounded-2xl max-w-md mx-auto space-y-3 animate-fadeIn"
-          >
-            <div className="w-12 h-12 rounded-xl bg-blue-600/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto">
-              <QrCode className="w-6 h-6 opacity-80" />
+                {/* 4. Leituras Totais */}
+                <div className="px-2 sm:px-4 py-1">
+                  <span className="text-[11px] font-semibold text-blue-400 block">Leituras Totais</span>
+                  <span className="text-2xl sm:text-3xl font-black text-blue-400">{totalScans}</span>
+                </div>
+              </div>
             </div>
 
-            {searchTerm ? (
-              <div className="space-y-1">
-                <h3 className="font-bold text-white text-sm">Nenhum QR Code encontrado</h3>
-                <p className="text-xs text-slate-400">
-                  Nenhum código corresponde a "{searchTerm}".
-                </p>
-                <button
-                  type="button"
-                  onClick={() => setSearchTerm('')}
-                  className="mt-2 text-xs text-blue-400 hover:underline font-semibold cursor-pointer"
-                >
-                  Limpar pesquisa
-                </button>
+            {/* ATALHOS RÁPIDOS */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Card Atalho Novo QR Code */}
+              <div
+                onClick={() => setIsCreateOpen(true)}
+                className="bg-[#0d121f] border border-blue-500/30 hover:border-blue-500/60 rounded-2xl p-4 sm:p-5 shadow-md flex items-center justify-between gap-3 cursor-pointer transition-all hover:bg-[#111827]"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-blue-400 font-bold text-sm sm:text-base">
+                    <Plus className="w-4 h-4" />
+                    <span>Criar QR Code Dinâmico</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Crie um código permanente para sites, catálogos, WhatsApp ou redes sociais.
+                  </p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
+                  <ArrowRight className="w-4 h-4" />
+                </div>
               </div>
-            ) : filterStatus !== 'all' ? (
-              <div className="space-y-1">
-                <h3 className="font-bold text-white text-sm">
-                  Nenhum QR Code {filterStatus === 'active' ? 'ativo' : 'inativo'}
+
+              {/* Card Atalho Gerador de Avaliação Google */}
+              <div
+                onClick={() => setActiveTab('google')}
+                className="bg-[#0d121f] border border-amber-500/30 hover:border-amber-500/60 rounded-2xl p-4 sm:p-5 shadow-md flex items-center justify-between gap-3 cursor-pointer transition-all hover:bg-[#111827]"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-amber-400 font-bold text-sm sm:text-base">
+                    <Star className="w-4 h-4 fill-amber-400" />
+                    <span>⭐ Gerador de Avaliação Google</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Converta o link da sua empresa no Google Maps em link direto de avaliação e plaquinha.
+                  </p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400 shrink-0">
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+            </div>
+
+            {/* SEÇÃO RECENTES & LISTA NO DASHBOARD */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                  <QrCode className="w-4 h-4 text-blue-400" />
+                  <span>QR Codes Recentes</span>
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setFilterStatus('all')}
-                  className="mt-2 text-xs text-blue-400 hover:underline font-semibold cursor-pointer"
+                  onClick={() => setActiveTab('qrcodes')}
+                  className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
                 >
-                  Ver todos os QR Codes
+                  <span>Ver todos ({totalCount})</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
                 </button>
+              </div>
+
+              {dataLoading ? (
+                <div className="py-8 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  <span>Carregando seus QR Codes...</span>
+                </div>
+              ) : qrCodes.length === 0 ? (
+                <div className="p-8 text-center bg-[#0d121f] border border-slate-800 rounded-2xl space-y-3">
+                  <QrCode className="w-10 h-10 text-slate-600 mx-auto" />
+                  <p className="text-sm font-bold text-white">Nenhum QR Code cadastrado ainda.</p>
+                  <p className="text-xs text-slate-400 max-w-sm mx-auto">
+                    Crie seu primeiro QR Code dinâmico para imprimir em suas placas ou materiais promocionais.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateOpen(true)}
+                    className="py-2.5 px-5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold inline-flex items-center gap-2 shadow-md shadow-blue-600/30 cursor-pointer"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>+ Novo QR Code</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2.5">
+                  {qrCodes.slice(0, 5).map((qr) => (
+                    <QRCodeCard
+                      key={qr.slug || qr.id}
+                      qr={qr}
+                      onEdit={(target) => setEditingQR(target)}
+                      onDelete={(target) => setDeletingQR(target)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================
+            ABA 2: MEUS QR CODES
+           ======================================================== */}
+        {activeTab === 'qrcodes' && (
+          <div className="space-y-4 animate-fadeIn">
+            {/* NO TOPO: TÍTULO "Meus QR Codes" + BOTÃO "+ Novo QR Code" */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+              <div>
+                <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+                  Meus QR Codes
+                </h2>
+                <p className="text-xs text-slate-400">
+                  Gerencie o destino e baixe seus códigos dinâmicos permanentes.
+                </p>
+              </div>
+
+              <button
+                id="btn-novo-qr-code"
+                type="button"
+                onClick={() => setIsCreateOpen(true)}
+                className="py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                <span>+ Novo QR Code</span>
+              </button>
+            </div>
+
+            {/* ABAIXO: BUSCA POR NOME OU CÓDIGO */}
+            <div className="relative w-full">
+              <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+              <input
+                id="input-pesquisa"
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="🔎 Buscar por nome ou código..."
+                className="w-full pl-10 pr-9 py-2.5 bg-[#0d121f] border border-slate-800 rounded-xl text-slate-100 placeholder-slate-500 text-xs sm:text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all"
+              />
+              {searchTerm && (
+                <button
+                  id="btn-clear-search"
+                  type="button"
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            {/* DEPOIS: FILTROS "Todos | Ativos | Inativos" */}
+            <div className="flex items-center gap-1.5 border-b border-slate-800/80 pb-3">
+              <button
+                type="button"
+                onClick={() => setFilterStatus('all')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filterStatus === 'all'
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-[#0d121f] text-slate-400 hover:text-slate-200 border border-slate-800'
+                }`}
+              >
+                Todos ({totalCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterStatus('active')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filterStatus === 'active'
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-[#0d121f] text-slate-400 hover:text-emerald-400 border border-slate-800'
+                }`}
+              >
+                Ativos ({activeCount})
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilterStatus('inactive')}
+                className={`py-1.5 px-3 rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                  filterStatus === 'inactive'
+                    ? 'bg-amber-600 text-white'
+                    : 'bg-[#0d121f] text-slate-400 hover:text-amber-400 border border-slate-800'
+                }`}
+              >
+                Inativos ({inactiveCount})
+              </button>
+            </div>
+
+            {/* LISTAGEM DE CARDS COMPACTOS */}
+            {dataLoading ? (
+              <div className="py-12 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                <span>Carregando seus QR Codes...</span>
+              </div>
+            ) : filteredQRCodes.length === 0 ? (
+              <div className="p-8 text-center bg-[#0d121f] border border-slate-800 rounded-2xl space-y-2">
+                <p className="text-sm font-bold text-white">Nenhum QR Code encontrado.</p>
+                <p className="text-xs text-slate-400">
+                  {searchTerm
+                    ? `Nenhum resultado para "${searchTerm}". Tente buscar por outro nome ou código.`
+                    : 'Você não tem nenhum QR Code nesta categoria.'}
+                </p>
               </div>
             ) : (
               <div className="space-y-3">
-                <h3 className="font-bold text-white text-base">Nenhum QR Code cadastrado</h3>
-                <p className="text-xs text-slate-400 max-w-xs mx-auto leading-relaxed">
-                  Crie seu primeiro QR Code agora. Você poderá informar o nome e o link de destino.
-                </p>
-                <button
-                  id="btn-empty-novo"
-                  type="button"
-                  onClick={() => setIsCreateOpen(true)}
-                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs shadow-lg shadow-blue-600/30 transition-all cursor-pointer active:scale-98"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span>CRIAR PRIMEIRO QR CODE</span>
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-5">
-            {/* GRID RESPONSIVO: MOBILE FIRST (VERTICAL 1 COLUNA NO CELULAR) */}
-            <div
-              id="qr-codes-grid"
-              className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 w-full max-w-full"
-            >
-              {paginatedQRCodes.map((qr) => (
-                <QRCodeCard
-                  key={qr.slug || qr.id}
-                  qr={qr}
-                  onEdit={(item) => setEditingQR(item)}
-                  onDelete={(item) => setDeletingQR(item)}
-                />
-              ))}
-            </div>
+                {paginatedQRCodes.map((qr) => (
+                  <QRCodeCard
+                    key={qr.slug || qr.id}
+                    qr={qr}
+                    onEdit={(target) => setEditingQR(target)}
+                    onDelete={(target) => setDeletingQR(target)}
+                  />
+                ))}
 
-            {/* 13. PAGINAÇÃO: CARREGAR MAIS */}
-            {hasMore && (
-              <div className="flex flex-col items-center justify-center pt-2 pb-2 space-y-1.5">
-                <button
-                  id="btn-carregar-mais"
-                  type="button"
-                  onClick={handleLoadMore}
-                  className="px-6 py-2.5 rounded-xl bg-[#0d121f] hover:bg-slate-800 text-slate-200 border border-slate-700 text-xs font-bold flex items-center gap-2 transition-all shadow-md cursor-pointer hover:border-blue-500/40 active:scale-98"
-                >
-                  <ChevronDown className="w-4 h-4 text-blue-400" />
-                  <span>CARREGAR MAIS</span>
-                </button>
-                <span className="text-[11px] text-slate-500 font-mono">
-                  Mostrando {paginatedQRCodes.length} de {filteredQRCodes.length}
-                </span>
+                {/* Paginação */}
+                {hasMore && (
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      onClick={handleLoadMore}
+                      className="py-2 px-5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition-colors cursor-pointer"
+                    >
+                      Carregar mais QR Codes
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
         )}
+
+        {/* ========================================================
+            ABA 3: ⭐ AVALIAÇÃO GOOGLE
+           ======================================================== */}
+        {activeTab === 'google' && (
+          <div className="animate-fadeIn">
+            <GoogleReviewGenerator
+              user={user}
+              allQRCodes={qrCodes}
+              onOpenQRInList={(slug) => {
+                setSearchTerm(slug);
+                setActiveTab('qrcodes');
+              }}
+              onEditQR={(target) => setEditingQR(target)}
+            />
+          </div>
+        )}
+
+        {/* ========================================================
+            ABA 4: MINHA CONTA
+           ======================================================== */}
+        {activeTab === 'account' && (
+          <div className="space-y-5 animate-fadeIn max-w-xl mx-auto">
+            <div className="bg-[#0d121f] border border-slate-800 rounded-2xl p-5 sm:p-6 shadow-xl space-y-5">
+              <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
+                <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-blue-600 to-cyan-400 flex items-center justify-center text-white shadow-md shadow-blue-600/30">
+                  <UserIcon className="w-6 h-6" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-base font-bold text-white truncate">{userName}</h3>
+                  <p className="text-xs text-slate-400 font-mono truncate">{user.email}</p>
+                </div>
+              </div>
+
+              {/* Informações da Conta */}
+              <div className="space-y-2.5 text-xs">
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#050811] border border-slate-800">
+                  <span className="text-slate-400">Total de QR Codes</span>
+                  <strong className="text-white font-bold">{totalCount}</strong>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#050811] border border-slate-800">
+                  <span className="text-slate-400">Total de Leituras</span>
+                  <strong className="text-blue-400 font-bold">{totalScans}</strong>
+                </div>
+
+                <div className="flex items-center justify-between p-2.5 rounded-xl bg-[#050811] border border-slate-800">
+                  <span className="text-slate-400">Sincronização Cloud</span>
+                  <span className="text-emerald-400 font-semibold flex items-center gap-1">
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Ativa (Firestore)</span>
+                  </span>
+                </div>
+
+                {/* Suporte a NFC para Placas */}
+                <div className="p-3 rounded-xl bg-[#050811] border border-blue-500/20 space-y-1">
+                  <div className="flex items-center gap-1.5 text-blue-400 font-bold">
+                    <Smartphone className="w-3.5 h-3.5" />
+                    <span>Pronto para Placas com NFC</span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 leading-relaxed">
+                    O link dinâmico permanente de cada QR Code (<code className="text-blue-400">dominio.com/q/:slug</code>) pode ser gravado diretamente em chips NFC para placas inteligentes de acrílico ou metal.
+                  </p>
+                </div>
+              </div>
+
+              {/* Ações da Conta */}
+              <div className="space-y-2 pt-2 border-t border-slate-800">
+                {/* Redefinir senha */}
+                <button
+                  type="button"
+                  onClick={handleSendPasswordReset}
+                  disabled={resetEmailLoading}
+                  className="w-full py-2.5 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>
+                    {resetEmailLoading
+                      ? 'Enviando e-mail...'
+                      : resetEmailSent
+                      ? '✓ E-mail de redefinição enviado!'
+                      : 'Redefinir senha da conta'}
+                  </span>
+                </button>
+
+                {/* Sair da conta */}
+                <button
+                  type="button"
+                  onClick={() => signOut(auth)}
+                  className="w-full py-2.5 px-3 rounded-xl bg-red-950/40 hover:bg-red-900/40 text-red-300 border border-red-500/30 text-xs font-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  <span>Sair da conta</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
 
-      {/* FOOTER */}
-      <footer
-        id="main-footer"
-        className="mt-auto border-t border-slate-900 py-4 text-center text-xs text-slate-500 bg-[#06080f]"
-      >
-        <div className="flex items-center justify-center gap-2 font-mono text-[11px]">
-          <span className="text-blue-400 font-bold">JZN CODE</span>
-          <span>•</span>
-          <span>QR Codes Dinâmicos</span>
-        </div>
-      </footer>
-
-      {/* MODALS */}
+      {/* MODAL 1: CRIAR NOVO QR CODE */}
       <CreateQRModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onCreated={() => {
-          // Automaticamente sincronizado via listener em tempo real
+        onCreated={(newQR) => {
+          setIsCreateOpen(false);
+          setActiveTab('qrcodes');
         }}
       />
 
+      {/* MODAL 2: EDITAR DESTINO */}
       <EditDestinationModal
         qr={editingQR}
-        isOpen={Boolean(editingQR)}
+        isOpen={!!editingQR}
         onClose={() => setEditingQR(null)}
         onUpdated={() => {
-          // Automaticamente sincronizado via listener em tempo real
+          setEditingQR(null);
         }}
       />
 
+      {/* MODAL 3: CONFIRMAÇÃO DE EXCLUSÃO */}
       <DeleteConfirmModal
         qr={deletingQR}
-        isOpen={Boolean(deletingQR)}
+        isOpen={!!deletingQR}
         onClose={() => setDeletingQR(null)}
         onDeleted={() => {
-          // Automaticamente sincronizado via listener em tempo real
+          setDeletingQR(null);
+        }}
+        onDeactivated={() => {
+          setDeletingQR(null);
         }}
       />
     </div>

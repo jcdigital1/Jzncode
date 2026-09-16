@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { doc, getDoc, collection, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 import { db } from '../firebase';
 import { DynamicQRCode } from '../types';
 import { AlertCircle } from 'lucide-react';
@@ -37,6 +37,7 @@ export function RedirectView({ slug }: RedirectViewProps) {
         const docSnap = await getDoc(docRef);
 
         let targetData: DynamicQRCode | null = null;
+        let matchedDocRef = docRef;
 
         if (docSnap.exists()) {
           targetData = docSnap.data() as DynamicQRCode;
@@ -49,6 +50,7 @@ export function RedirectView({ slug }: RedirectViewProps) {
             );
             const querySnap = await getDocs(q);
             if (!querySnap.empty) {
+              matchedDocRef = doc(db, 'dynamicQRCodes', querySnap.docs[0].id);
               targetData = querySnap.docs[0].data() as DynamicQRCode;
             }
           } catch {
@@ -69,11 +71,19 @@ export function RedirectView({ slug }: RedirectViewProps) {
           return;
         }
 
-        const destination = targetData.destinationUrl?.trim();
+        const rawDest = (targetData.destinationUrl || '').trim();
+        const destination = /^https?:\/\//i.test(rawDest) ? rawDest : `https://${rawDest}`;
+
         if (!destination || !isValidHttpUrl(destination)) {
           setError('Link de destino inválido ou não configurado.');
           return;
         }
+
+        // Registra leitura de forma atômica
+        updateDoc(matchedDocRef, {
+          scansCount: increment(1),
+          lastScanAt: serverTimestamp(),
+        }).catch(() => {});
 
         // REDIRECIONAMENTO IMEDIATO:
         // Sem setTimeout, sem contagem regressiva, sem loading screen intermediária

@@ -1,6 +1,49 @@
 import QRCode from 'qrcode';
 
 /**
+ * Retorna a URL base definitiva e permanente para os QR Codes dinâmicos.
+ * Prioridades:
+ * 1. Variável de ambiente VITE_APP_URL se configurada (ex: https://jzncodee.vercel.app ou domínio próprio)
+ * 2. Em ambiente de produção na Vercel (*.vercel.app) ou domínio customizado (window.location.origin)
+ * 3. Se estiver em ambiente local (localhost, 127.0.0.1) ou preview efêmero (run.app, webcontainer),
+ *    utiliza obrigatoriamente a URL de produção oficial: https://jzncodee.vercel.app
+ */
+export function getDynamicQRBaseUrl(): string {
+  const envUrl = (((import.meta as any).env?.VITE_APP_URL as string) || '').trim();
+  if (envUrl) {
+    return envUrl.replace(/\/+$/, '');
+  }
+
+  if (typeof window !== 'undefined' && window.location) {
+    const origin = window.location.origin.replace(/\/+$/, '');
+    const hostname = window.location.hostname.toLowerCase();
+
+    const isDevOrPreview =
+      hostname.includes('localhost') ||
+      hostname.includes('127.0.0.1') ||
+      hostname.includes('.run.app') ||
+      hostname.includes('webcontainer.io');
+
+    if (!isDevOrPreview && origin && origin !== 'null') {
+      return origin;
+    }
+  }
+
+  return 'https://jzncodee.vercel.app';
+}
+
+/**
+ * Retorna a URL dinâmica permanente e imutável que deve ser gravada no desenho do QR Code.
+ * O QR Code baixado SEMPRE apontará para esta URL.
+ * Exemplo: https://jzncodee.vercel.app/q/KysTggnD
+ */
+export function getDynamicQRUrl(slug: string): string {
+  const base = getDynamicQRBaseUrl();
+  const cleanSlug = (slug || '').trim();
+  return `${base}/q/${cleanSlug}`;
+}
+
+/**
  * Generates an 8-character unique alphanumeric slug (e.g., k8F2pQ9x).
  * Uses crypto.getRandomValues for cryptographic randomness.
  */
