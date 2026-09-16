@@ -1,0 +1,6 @@
+{
+  "name": "JZN CODE",
+  "description": "Gerenciador profissional de QR Codes dinâmicos com redirecionamento em tempo real e Firebase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

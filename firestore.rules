@@ -1,0 +1,26 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Coleção de usuários: cada usuário gerencia apenas seu próprio perfil
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // Coleção de QR Codes Dinâmicos
+    match /dynamicQRCodes/{qrId} {
+      // Leitura pontual de 1 documento permitida para o redirecionamento público (/q/:slug)
+      allow get: if true;
+
+      // Consulta/Listagem restrita a usuários autenticados
+      allow list: if request.auth != null;
+
+      // Criação permitida se o userId pertencer ao usuário autenticado
+      allow create: if request.auth != null
+        && request.resource.data.userId == request.auth.uid;
+
+      // Edição e exclusão permitidas apenas pelo proprietário do documento
+      allow update, delete: if request.auth != null
+        && resource.data.userId == request.auth.uid;
+    }
+  }
+}
