@@ -1,10 +1,9 @@
-import { useState, useEffect, type FormEvent } from 'react';
+import { useState, useEffect, useRef, type FormEvent } from 'react';
 import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import { DynamicQRCode } from '../types';
 import {
   generateSlug,
-  generateQRId,
   normalizeUrl,
   getDynamicQRUrl,
   generateQRCodeDataUrl,
@@ -22,15 +21,20 @@ import {
   FileImage,
   CheckCircle2,
   Check,
+  Copy,
+  ExternalLink,
+  Edit3,
+  ChevronDown,
 } from 'lucide-react';
 
 interface CreateQRModalProps {
   isOpen: boolean;
   onClose: () => void;
   onCreated: (newQR: DynamicQRCode) => void;
+  onEdit?: (qr: DynamicQRCode) => void;
 }
 
-export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps) {
+export function CreateQRModal({ isOpen, onClose, onCreated, onEdit }: CreateQRModalProps) {
   const [name, setName] = useState('');
   const [destinationUrl, setDestinationUrl] = useState('');
   const [active, setActive] = useState(true);
@@ -41,6 +45,9 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
   const [createdQR, setCreatedQR] = useState<DynamicQRCode | null>(null);
   const [qrPngUrl, setQrPngUrl] = useState<string | null>(null);
   const [qrSvgString, setQrSvgString] = useState<string | null>(null);
+  const [copiedSlug, setCopiedSlug] = useState(false);
+  const [downloadMenuOpen, setDownloadMenuOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -51,8 +58,25 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
       setQrPngUrl(null);
       setQrSvgString(null);
       setError(null);
+      setCopiedSlug(false);
+      setDownloadMenuOpen(false);
     }
   }, [isOpen]);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setDownloadMenuOpen(false);
+      }
+    }
+    if (downloadMenuOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [downloadMenuOpen]);
 
   if (!isOpen) return null;
 
@@ -81,7 +105,7 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
       setLoading(true);
       setError(null);
 
-      // 1. Gerar slug único
+      // 1. Gerar slug único permanente
       const slug = generateSlug(8);
 
       // 2. Salvar no Firestore
@@ -121,16 +145,38 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
     }
   };
 
+  const handleCopySlug = async () => {
+    if (!createdQR) return;
+    try {
+      const dynamicUrl = getDynamicQRUrl(createdQR.slug);
+      await navigator.clipboard.writeText(dynamicUrl);
+      setCopiedSlug(true);
+      setTimeout(() => setCopiedSlug(false), 2000);
+    } catch {
+      // ignore
+    }
+  };
+
   const handleDownloadPng = () => {
     if (!qrPngUrl || !createdQR) return;
     const filename = getQRCodeFilename(createdQR.name, 'png');
     downloadDataUrl(qrPngUrl, filename);
+    setDownloadMenuOpen(false);
   };
 
   const handleDownloadSvg = () => {
     if (!qrSvgString || !createdQR) return;
     const filename = getQRCodeFilename(createdQR.name, 'svg');
     downloadSvg(qrSvgString, filename);
+    setDownloadMenuOpen(false);
+  };
+
+  const handleEditCreated = () => {
+    if (!createdQR) return;
+    onClose();
+    if (onEdit) {
+      onEdit(createdQR);
+    }
   };
 
   return (
@@ -194,7 +240,7 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex: 001, Barbearia Jeann, Mesa 01"
+                  placeholder="Ex.: Instagram Cliente João"
                   className="w-full px-3.5 py-2.5 bg-[#050811] border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-medium"
                 />
               </div>
@@ -212,7 +258,7 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
                     required
                     value={destinationUrl}
                     onChange={(e) => setDestinationUrl(e.target.value)}
-                    placeholder="https://instagram.com/cliente"
+                    placeholder="https://..."
                     className="w-full pl-10 pr-3.5 py-2.5 bg-[#050811] border border-slate-700 rounded-xl text-slate-100 placeholder-slate-500 text-sm focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono"
                   />
                 </div>
@@ -266,69 +312,138 @@ export function CreateQRModal({ isOpen, onClose, onCreated }: CreateQRModalProps
                       <span>GERANDO...</span>
                     </>
                   ) : (
-                    <span>GERAR QR CODE</span>
+                    <span>GERAR QR CODE DINÂMICO</span>
                   )}
                 </button>
               </div>
             </form>
           ) : (
-            /* TELA DE SUCESSO E DOWNLOAD */
+            /* TELA DE SUCESSO: [QR CODE] Nome | Destino atual | Código permanente | Baixar | Editar | Testar */
             <div className="space-y-4 text-center animate-fadeIn">
-              <div className="p-3 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs flex items-center justify-center gap-2">
+              <div className="p-2.5 bg-emerald-950/60 border border-emerald-500/40 rounded-xl text-emerald-300 text-xs flex items-center justify-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
                 <span className="font-semibold">QR Code criado com sucesso!</span>
               </div>
 
-              {/* Preview centralizado com quiet-zone */}
-              <div className="flex justify-center my-2">
-                <div className="p-4 bg-white rounded-2xl shadow-xl border border-slate-200/20 inline-block">
+              {/* [QR CODE] Preview com borda e quiet-zone */}
+              <div className="flex justify-center my-1">
+                <div className="p-3.5 bg-white rounded-2xl shadow-xl border border-slate-200/20 inline-block">
                   {qrPngUrl && (
                     <img
                       src={qrPngUrl}
                       alt={createdQR.name}
-                      className="w-40 h-40 object-contain block"
+                      className="w-36 h-36 object-contain block"
                     />
                   )}
                 </div>
               </div>
 
-              <div className="bg-[#050811] p-3 rounded-xl border border-slate-800 text-left text-xs space-y-1">
-                <div className="text-slate-400">
-                  Nome: <strong className="text-white">{createdQR.name}</strong>
+              {/* Informações: Nome, Destino atual, Código permanente */}
+              <div className="bg-[#050811] p-3 rounded-xl border border-slate-800 text-left text-xs space-y-1.5">
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Nome:</span>
+                  <strong className="text-white text-sm font-bold">{createdQR.name}</strong>
                 </div>
-                <div className="text-slate-400 truncate">
-                  Destino: <span className="font-mono text-blue-300">{createdQR.destinationUrl}</span>
+                <div>
+                  <span className="text-slate-500 text-[11px] block">Destino atual:</span>
+                  <span className="font-mono text-blue-300 text-xs break-all">{createdQR.destinationUrl}</span>
+                </div>
+                <div className="pt-1 flex items-center justify-between border-t border-slate-800/80">
+                  <div>
+                    <span className="text-slate-500 text-[11px] block">Código permanente:</span>
+                    <span className="font-mono text-emerald-400 font-bold text-xs bg-emerald-950/40 px-2 py-0.5 rounded border border-emerald-500/30 inline-block">
+                      {createdQR.slug}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleCopySlug}
+                    className="text-xs text-blue-400 hover:text-blue-300 font-semibold flex items-center gap-1 cursor-pointer py-1 px-2 rounded bg-slate-800/80 hover:bg-slate-800"
+                  >
+                    {copiedSlug ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar link</span>
+                      </>
+                    )}
+                  </button>
                 </div>
               </div>
 
-              {/* Opções de Download */}
-              <div className="grid grid-cols-2 gap-2 pt-1">
+              {/* Ações solicitadas: Baixar | Editar | Testar */}
+              <div className="grid grid-cols-3 gap-2 pt-1">
+                {/* 1. Baixar */}
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    id="btn-created-download"
+                    type="button"
+                    onClick={() => setDownloadMenuOpen((prev) => !prev)}
+                    className="w-full py-2.5 px-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1 shadow-md shadow-blue-600/30 transition-all cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Baixar</span>
+                    <ChevronDown className="w-3 h-3 opacity-80" />
+                  </button>
+
+                  {downloadMenuOpen && (
+                    <div className="absolute left-0 bottom-full mb-1.5 w-44 bg-[#0d121f] border border-blue-500/40 rounded-xl shadow-2xl p-1.5 z-30 space-y-1 text-left">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-0.5 border-b border-slate-800">
+                        Formato
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleDownloadPng}
+                        className="w-full py-1.5 px-2 rounded-lg text-left text-xs font-medium text-slate-200 hover:bg-blue-600 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <FileImage className="w-3.5 h-3.5 text-blue-400" />
+                        <span>PNG (Alta res)</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleDownloadSvg}
+                        className="w-full py-1.5 px-2 rounded-lg text-left text-xs font-medium text-slate-200 hover:bg-blue-600 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <FileCode className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>SVG (Vetorial)</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Editar */}
                 <button
-                  id="btn-created-download-png"
+                  id="btn-created-edit"
                   type="button"
-                  onClick={handleDownloadPng}
-                  className="py-2.5 px-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/30 transition-all cursor-pointer active:scale-98"
+                  onClick={handleEditCreated}
+                  className="py-2.5 px-2 rounded-xl bg-[#050811] hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-500 font-semibold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer"
                 >
-                  <FileImage className="w-4 h-4" />
-                  <span>BAIXAR PNG</span>
+                  <Edit3 className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Editar</span>
                 </button>
 
-                <button
-                  id="btn-created-download-svg"
-                  type="button"
-                  onClick={handleDownloadSvg}
-                  className="py-2.5 px-3 rounded-xl bg-[#050811] hover:bg-slate-800 text-blue-300 hover:text-white border border-blue-500/40 font-bold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-98"
+                {/* 3. Testar */}
+                <a
+                  id="btn-created-test"
+                  href={createdQR.destinationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-2.5 px-2 rounded-xl bg-[#050811] hover:bg-slate-800 text-slate-200 border border-slate-700 hover:border-slate-500 font-semibold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer"
                 >
-                  <FileCode className="w-4 h-4 text-cyan-400" />
-                  <span>BAIXAR SVG</span>
-                </button>
+                  <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Testar</span>
+                </a>
               </div>
 
               <button
                 id="btn-created-finish"
                 type="button"
                 onClick={onClose}
-                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs transition-colors cursor-pointer"
+                className="w-full py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition-colors cursor-pointer"
               >
                 Concluir
               </button>

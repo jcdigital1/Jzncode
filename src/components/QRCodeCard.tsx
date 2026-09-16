@@ -112,65 +112,76 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
   return (
     <div
       id={`qr-card-${qr.slug}`}
-      className="bg-[#0d121f] border border-slate-800/90 hover:border-blue-500/40 rounded-2xl p-3.5 sm:p-4 shadow-md transition-all duration-200 flex flex-col justify-between gap-3 w-full max-w-full overflow-hidden"
+      className="bg-[#0d121f] border border-slate-800/90 hover:border-blue-500/40 rounded-xl p-3 sm:p-3.5 shadow-sm transition-all duration-150 flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full max-w-full overflow-hidden"
     >
-      {/* CORPO PRINCIPAL DO CARD: ESQUERDA | CENTRO | DIREITA */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3.5 sm:gap-4 w-full">
-        {/* ESQUERDA: Miniatura do QR Code com aprox 80-100px */}
-        <div className="shrink-0 mx-auto sm:mx-0">
-          <div className="p-2 bg-white rounded-xl shadow-sm border border-slate-300/40 flex items-center justify-center w-[88px] h-[88px] sm:w-[96px] sm:h-[96px]">
-            {qrDataUrl ? (
-              <img
-                src={qrDataUrl}
-                alt={`QR Code ${qr.name}`}
-                className="w-full h-full object-contain block rounded"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-slate-400">
-                <QrCode className="w-6 h-6 text-blue-500 animate-pulse" />
-              </div>
-            )}
-          </div>
+      {/* LADO ESQUERDO: Miniatura + Detalhes */}
+      <div className="flex items-start sm:items-center gap-3 min-w-0 flex-1">
+        {/* [QR pequeno] (56x56px) */}
+        <div className="shrink-0 p-1.5 bg-white rounded-lg shadow-sm border border-slate-300/40 flex items-center justify-center w-14 h-14">
+          {qrDataUrl ? (
+            <img
+              src={qrDataUrl}
+              alt={`QR ${qr.name}`}
+              className="w-full h-full object-contain block rounded"
+            />
+          ) : (
+            <QrCode className="w-5 h-5 text-blue-500 animate-pulse" />
+          )}
         </div>
 
-        {/* CENTRO: Nome, Código e Destino */}
-        <div className="flex-1 min-w-0 w-full text-left space-y-1">
-          {/* Nome */}
-          <div className="flex items-center gap-2">
+        {/* Informações: Nome + Ativo / Código / Destino / Leituras */}
+        <div className="min-w-0 flex-1 space-y-0.5 text-left">
+          {/* Linha 1: Nome do QR + Badge Ativo */}
+          <div className="flex items-center gap-2 flex-wrap">
             <h3
               id={`qr-title-${qr.slug}`}
               title={qr.name}
-              className="text-sm sm:text-base font-bold text-white tracking-tight truncate max-w-full"
+              className="text-sm font-bold text-white tracking-tight truncate max-w-[200px] sm:max-w-[280px]"
             >
               {qr.name}
             </h3>
+            <span
+              id={`qr-status-${qr.slug}`}
+              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${
+                isActive
+                  ? 'bg-emerald-950/70 text-emerald-400 border border-emerald-500/30'
+                  : 'bg-amber-950/70 text-amber-400 border border-amber-500/30'
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  isActive ? 'bg-emerald-400' : 'bg-amber-400'
+                }`}
+              />
+              <span>{isActive ? 'Ativo' : 'Inativo'}</span>
+            </span>
           </div>
 
-          {/* Código / Slug */}
+          {/* Linha 2: Código */}
           <div className="flex items-center gap-1.5 text-xs text-slate-400">
             <span className="text-slate-500 text-[11px]">Código:</span>
-            <span className="font-mono text-blue-400 font-semibold text-xs bg-[#050811] px-1.5 py-0.5 rounded border border-slate-800">
+            <span className="font-mono text-blue-400 font-semibold text-xs bg-[#050811] px-1.5 py-0.2 rounded border border-slate-800">
               {qr.slug}
             </span>
             <button
               type="button"
               onClick={handleCopySlug}
-              title="Copiar link dinâmico permanente"
-              className="p-1 text-slate-400 hover:text-blue-300 rounded transition-colors"
+              title="Copiar link dinâmico"
+              className="p-0.5 text-slate-400 hover:text-blue-300 rounded transition-colors"
             >
               {copiedSlug ? (
-                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                <Check className="w-3 h-3 text-emerald-400" />
               ) : (
-                <Copy className="w-3.5 h-3.5" />
+                <Copy className="w-3 h-3" />
               )}
             </button>
           </div>
 
-          {/* Destino */}
-          <div className="flex items-center gap-1.5 text-xs text-slate-400 pt-0.5 max-w-full">
+          {/* Linha 3: Destino */}
+          <div className="flex items-center gap-1.5 text-xs text-slate-400 truncate">
             <span className="text-slate-500 text-[11px] shrink-0">Destino:</span>
             <span
-              className="text-[12px] font-mono text-slate-300 truncate max-w-[220px] sm:max-w-[280px] md:max-w-[340px]"
+              className="text-[11px] font-mono text-slate-300 truncate max-w-[180px] sm:max-w-[240px] md:max-w-[320px]"
               title={qr.destinationUrl}
             >
               {displayDest || qr.destinationUrl}
@@ -180,66 +191,46 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
               target="_blank"
               rel="noopener noreferrer"
               title="Abrir destino em nova aba"
-              className="p-1 text-blue-400 hover:text-blue-300 shrink-0 transition-colors"
+              className="p-0.5 text-blue-400 hover:text-blue-300 shrink-0"
             >
               <ExternalLink className="w-3 h-3" />
             </a>
           </div>
-        </div>
 
-        {/* DIREITA: Status, Leituras e Última leitura */}
-        <div className="shrink-0 w-full sm:w-auto flex sm:flex-col justify-between sm:items-end border-t sm:border-t-0 border-slate-800/80 pt-2 sm:pt-0 gap-1 text-right">
-          {/* Status badge */}
-          <div
-            id={`qr-status-${qr.slug}`}
-            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase ${
-              isActive
-                ? 'bg-emerald-950/70 border border-emerald-500/40 text-emerald-400'
-                : 'bg-amber-950/70 border border-amber-500/40 text-amber-400'
-            }`}
-          >
-            <span
-              className={`w-1.5 h-1.5 rounded-full ${
-                isActive ? 'bg-emerald-400 animate-pulse' : 'bg-amber-400'
-              }`}
-            />
-            <span>{isActive ? 'ATIVO' : 'INATIVO'}</span>
-          </div>
-
-          {/* Leituras */}
-          <div className="text-xs text-slate-300">
-            <span className="text-slate-500 text-[11px]">Leituras: </span>
-            <strong className="text-white font-bold">{scans}</strong>
-          </div>
-
-          {/* Última leitura */}
-          <div className="text-[11px] text-slate-400">
-            <span className="text-slate-500 text-[10px]">Última leitura: </span>
-            <span className="text-slate-300">{lastScan}</span>
+          {/* Linha 4: Leituras */}
+          <div className="text-[11px] text-slate-400 flex items-center gap-2">
+            <span>
+              <strong className="text-white font-bold">{scans}</strong> leituras
+            </span>
+            {lastScan && (
+              <span className="text-slate-500 text-[10px] hidden sm:inline">
+                (última: {lastScan})
+              </span>
+            )}
           </div>
         </div>
       </div>
 
-      {/* PARTE INFERIOR: AÇÕES PEQUENAS [ Editar ] [ Baixar ] [ Excluir ] */}
-      <div className="pt-2 border-t border-slate-800/70 flex items-center justify-end gap-2 w-full">
-        {/* Ação: Editar */}
+      {/* LADO DIREITO: Botões de Ação [ ✏ Editar ] [ ↓ Baixar ] [ 🗑 Excluir ] */}
+      <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/80">
+        {/* ✏ Editar */}
         <button
           id={`btn-edit-${qr.slug}`}
           type="button"
           onClick={() => onEdit(qr)}
-          className="py-1.5 px-3 rounded-lg bg-[#050811] hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors border border-slate-800 cursor-pointer"
+          className="py-1.5 px-2.5 rounded-lg bg-[#050811] hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-colors border border-slate-800 cursor-pointer"
         >
           <Edit3 className="w-3.5 h-3.5 text-blue-400" />
           <span>Editar</span>
         </button>
 
-        {/* Ação: Baixar */}
+        {/* ↓ Baixar */}
         <div className="relative" ref={dropdownRef}>
           <button
             id={`btn-download-${qr.slug}`}
             type="button"
             onClick={() => setDownloadMenuOpen((prev) => !prev)}
-            className="py-1.5 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors shadow-sm shadow-blue-600/20 cursor-pointer"
+            className="py-1.5 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold flex items-center gap-1 transition-colors shadow-sm shadow-blue-600/20 cursor-pointer"
           >
             <Download className="w-3.5 h-3.5" />
             <span>Baixar</span>
@@ -249,7 +240,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
           {downloadMenuOpen && (
             <div
               id={`download-menu-${qr.slug}`}
-              className="absolute right-0 bottom-full mb-1.5 w-44 bg-[#0d121f] border border-blue-500/40 rounded-xl shadow-2xl p-1.5 z-30 space-y-1"
+              className="absolute right-0 bottom-full sm:bottom-auto sm:top-full mb-1.5 sm:mb-0 sm:mt-1.5 w-44 bg-[#0d121f] border border-blue-500/40 rounded-xl shadow-2xl p-1.5 z-30 space-y-1"
             >
               <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-0.5 border-b border-slate-800">
                 Formato
@@ -274,7 +265,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
           )}
         </div>
 
-        {/* Ação: Excluir */}
+        {/* 🗑 Excluir */}
         <button
           id={`btn-delete-${qr.slug}`}
           type="button"

@@ -341,7 +341,7 @@ export function GoogleReviewGenerator({
           </h2>
         </div>
         <p className="text-xs sm:text-sm text-slate-300 mb-5 leading-relaxed">
-          Transforme o endereço da sua empresa no Google em um link direto para receber avaliações.
+          Cole o link da empresa no Google e gere um acesso direto para o cliente deixar sua avaliação.
         </p>
 
         {/* Mensagens de erro */}
@@ -368,7 +368,7 @@ export function GoogleReviewGenerator({
                   type="text"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  placeholder="Cole aqui o link compartilhado da empresa no Google Maps"
+                  placeholder="Cole aqui o link do Google/Google Maps da empresa"
                   className="w-full bg-[#050811] border border-slate-700/80 focus:border-blue-500 rounded-xl py-3 px-3.5 pr-10 text-xs sm:text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
                 />
                 <div className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500">
@@ -392,12 +392,12 @@ export function GoogleReviewGenerator({
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Consultando estabelecimento no Google...</span>
+                  <span>Identificando estabelecimento no Google...</span>
                 </>
               ) : (
                 <>
                   <Star className="w-4 h-4 text-amber-300 fill-amber-300" />
-                  <span>⭐ Gerar link de avaliação</span>
+                  <span>⭐ GERAR LINK DE AVALIAÇÃO</span>
                 </>
               )}
             </button>
@@ -448,12 +448,13 @@ export function GoogleReviewGenerator({
 
             <div className="flex flex-col sm:flex-row items-center gap-2.5">
               <button
+                id="btn-confirm-company"
                 type="button"
                 onClick={handleConfirmCompany}
                 className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all shadow-md shadow-emerald-600/30 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>✓ É esta empresa</span>
+                <span>✓ Confirmar empresa</span>
               </button>
               <button
                 type="button"
@@ -473,16 +474,19 @@ export function GoogleReviewGenerator({
             <div className="p-4 bg-[#050811] border border-emerald-500/40 rounded-xl space-y-3">
               <div className="flex items-center gap-2 text-emerald-400 text-xs font-bold uppercase tracking-wider">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>✓ Link de avaliação criado</span>
+                <span>✓ LINK DE AVALIAÇÃO CRIADO</span>
               </div>
 
               <div>
                 <span className="text-slate-400 text-[11px] block">Empresa:</span>
-                <strong className="text-white text-sm sm:text-base font-bold">{place.name}</strong>
+                <strong className="text-white text-sm sm:text-base font-bold flex items-center gap-1.5">
+                  <Star className="w-4 h-4 text-amber-400 fill-amber-400 shrink-0" />
+                  <span>{place.name}</span>
+                </strong>
               </div>
 
               <div>
-                <span className="text-slate-400 text-[11px] block mb-1">Link de Avaliação:</span>
+                <span className="text-slate-400 text-[11px] block mb-1">Link direto para avaliação:</span>
                 <div className="bg-[#0a0f1d] p-2.5 rounded-lg border border-slate-800 flex items-center justify-between gap-2 overflow-hidden">
                   <span className="text-xs font-mono text-blue-300 truncate max-w-[calc(100%-60px)]">
                     {place.reviewUrl}
@@ -491,7 +495,7 @@ export function GoogleReviewGenerator({
                     href={place.reviewUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    title="Testar link em nova aba"
+                    title="Abrir avaliação no Google"
                     className="p-1 text-slate-400 hover:text-white rounded"
                   >
                     <ExternalLink className="w-3.5 h-3.5" />
@@ -499,63 +503,87 @@ export function GoogleReviewGenerator({
                 </div>
               </div>
 
-              {/* Ações do link gerado */}
+              {/* Três botões solicitados: 📋 COPIAR LINK | ↗ TESTAR LINK | ▦ CRIAR QR CODE */}
               <div className="flex flex-wrap items-center gap-2 pt-1">
                 <button
+                  id="btn-copy-review-link"
                   type="button"
                   onClick={() => handleCopy(place.reviewUrl)}
-                  className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                  className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
                 >
                   {copiedLink ? (
                     <>
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Copiado!</span>
+                      <span>COPIADO!</span>
                     </>
                   ) : (
                     <>
                       <Copy className="w-3.5 h-3.5" />
-                      <span>📋 Copiar link</span>
+                      <span>📋 COPIAR LINK</span>
                     </>
                   )}
                 </button>
 
                 <a
+                  id="btn-test-review-link"
                   href={place.reviewUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
                 >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  <span>↗️ Testar</span>
+                  <ExternalLink className="w-3.5 h-3.5 text-blue-400" />
+                  <span>↗ TESTAR LINK</span>
+                </a>
+
+                <a
+                  href="#create-qr-section"
+                  className="py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-sm shadow-blue-600/30"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>▦ CRIAR QR CODE</span>
                 </a>
               </div>
             </div>
 
-            {/* Formulário para criar o QR Code Dinâmico com 1 clique */}
-            <div className="p-4 bg-[#0a0f1d] border border-blue-500/40 rounded-xl space-y-3">
+            {/* Formulário para criar o QR Code Dinâmico com preenchimento automático */}
+            <div id="create-qr-section" className="p-4 bg-[#0a0f1d] border border-blue-500/40 rounded-xl space-y-3">
               <div className="flex items-center gap-2 text-blue-400 text-xs font-bold uppercase tracking-wider">
                 <QrCode className="w-4 h-4" />
-                <span>Criar QR Code Dinâmico da Avaliação</span>
+                <span>TRANSFORMAR A AVALIAÇÃO EM QR CODE</span>
               </div>
               <p className="text-xs text-slate-300">
-                O QR Code gerado será dinâmico permanente (<code className="text-blue-400">/q/:slug</code>). Você poderá imprimir nas plaquinhas e, se precisar, mudar o destino no futuro sem perder a impressão.
+                O QR Code conterá uma URL dinâmica permanente do JZN CODE redirecionando direto para a avaliação.
               </p>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-300 mb-1">
-                  Nome do QR Code
+                  Nome do QR Code:
                 </label>
                 <input
+                  id="input-qr-auto-name"
                   type="text"
                   value={qrNameInput}
                   onChange={(e) => setQrNameInput(e.target.value)}
-                  placeholder="Avaliação Google — Nome da Empresa"
-                  className="w-full bg-[#050811] border border-slate-700 focus:border-blue-500 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none"
+                  placeholder={`Avaliação Google — ${place.name}`}
+                  className="w-full bg-[#050811] border border-slate-700 focus:border-blue-500 rounded-xl py-2.5 px-3 text-xs text-white placeholder-slate-500 focus:outline-none font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">
+                  Destino:
+                </label>
+                <input
+                  type="text"
+                  readOnly
+                  value={place.reviewUrl}
+                  className="w-full bg-[#050811]/70 border border-slate-800 rounded-xl py-2 px-3 text-xs font-mono text-slate-400 focus:outline-none cursor-default"
                 />
               </div>
 
               <div className="flex flex-col sm:flex-row items-center gap-2 pt-1">
                 <button
+                  id="btn-create-dynamic-qr-from-review"
                   type="button"
                   onClick={handleCreateDynamicQR}
                   disabled={creatingQR}
@@ -564,12 +592,12 @@ export function GoogleReviewGenerator({
                   {creatingQR ? (
                     <>
                       <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                      <span>Criando QR Code Dinâmico...</span>
+                      <span>GERANDO QR CODE...</span>
                     </>
                   ) : (
                     <>
-                      <PlusCircle className="w-4 h-4" />
-                      <span>➕ Criar QR Code Dinâmico</span>
+                      <QrCode className="w-4 h-4" />
+                      <span>GERAR QR CODE DINÂMICO</span>
                     </>
                   )}
                 </button>
@@ -585,7 +613,7 @@ export function GoogleReviewGenerator({
           </div>
         )}
 
-        {/* ETAPA 4: QR CODE CRIADO COM SUCESSO */}
+        {/* ETAPA 4: QR CODE CRIADO COM SUCESSO: [ QR CODE ] Nome | Baixar | Testar | Editar */}
         {step === 'created_success' && createdQR && (
           <div className="space-y-4 animate-fadeIn p-4 bg-[#050811] border border-emerald-500/50 rounded-xl">
             <div className="flex items-center gap-2 text-emerald-400 text-sm font-bold uppercase tracking-wider">
@@ -594,8 +622,8 @@ export function GoogleReviewGenerator({
             </div>
 
             <div className="flex flex-col sm:flex-row items-center gap-4 py-2">
-              {/* Moldura do QR Code com Nome */}
-              <div className="shrink-0 p-2 bg-white rounded-xl shadow-md border border-slate-200 flex items-center justify-center w-[120px] h-[120px]">
+              {/* [ QR CODE ] Moldura com preview */}
+              <div className="shrink-0 p-2.5 bg-white rounded-xl shadow-md border border-slate-200 flex items-center justify-center w-[110px] h-[110px]">
                 {createdQRDataUrl ? (
                   <img
                     src={createdQRDataUrl}
@@ -622,17 +650,18 @@ export function GoogleReviewGenerator({
               </div>
             </div>
 
-            {/* Ações pós-criação: Baixar, Editar, Testar QR */}
+            {/* Ações solicitadas: Baixar | Testar | Editar */}
             <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800">
-              {/* Botão Baixar */}
+              {/* 1. Baixar */}
               <div className="relative">
                 <button
+                  id="btn-created-download-dropdown"
                   type="button"
                   onClick={() => setDownloadMenuOpen((prev) => !prev)}
                   className="py-2 px-3 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/30 cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>Baixar QR Code</span>
+                  <span>Baixar</span>
                   <ChevronDown className="w-3 h-3 opacity-80" />
                 </button>
 
@@ -658,20 +687,22 @@ export function GoogleReviewGenerator({
                 )}
               </div>
 
-              {/* Botão Testar QR */}
+              {/* 2. Testar */}
               <a
+                id="btn-created-test-qr"
                 href={`/q/${createdQR.slug}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors"
               >
-                <ExternalLink className="w-3.5 h-3.5" />
-                <span>Testar QR</span>
+                <ExternalLink className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Testar</span>
               </a>
 
-              {/* Botão Editar */}
+              {/* 3. Editar */}
               {onEditQR && (
                 <button
+                  id="btn-created-edit-qr"
                   type="button"
                   onClick={() => onEditQR(createdQR)}
                   className="py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
