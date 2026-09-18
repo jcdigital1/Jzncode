@@ -937,6 +937,7 @@ export default function App() {
             <BatchesView
               batches={batches}
               qrCodes={qrCodes}
+              userId={user?.uid || ''}
               onOpenCreateBulk={() => setIsBulkCreateOpen(true)}
               onConfigureQR={(qr) => setConfiguringPlaqueQR(qr)}
               initialSelectedBatchId={selectedBatchId}

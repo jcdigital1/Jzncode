@@ -7,6 +7,8 @@ import {
   getDynamicQRUrl,
   formatDisplayUrl,
 } from '../utils/qr';
+import { PlaqueGeneratorModal } from './PlaqueGeneratorModal';
+import { PrintHistoryModal } from './PrintHistoryModal';
 import {
   Layers,
   Search,
@@ -21,11 +23,14 @@ import {
   Sparkles,
   ChevronRight,
   Plus,
+  Printer,
+  History,
 } from 'lucide-react';
 
 interface BatchesViewProps {
   batches: QRBatch[];
   qrCodes: DynamicQRCode[];
+  userId?: string;
   onOpenCreateBulk: () => void;
   onConfigureQR: (qr: DynamicQRCode) => void;
   initialSelectedBatchId?: string | null;
@@ -34,6 +39,7 @@ interface BatchesViewProps {
 export function BatchesView({
   batches,
   qrCodes,
+  userId = '',
   onOpenCreateBulk,
   onConfigureQR,
   initialSelectedBatchId,
@@ -44,6 +50,8 @@ export function BatchesView({
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'available' | 'configured'>('all');
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
+  const [isPlaqueGeneratorOpen, setIsPlaqueGeneratorOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   const selectedBatch = useMemo(() => {
     return batches.find((b) => b.id === selectedBatchId) || null;
@@ -158,21 +166,47 @@ export function BatchesView({
               </div>
             </div>
 
-            {/* Contadores do lote */}
-            <div className="flex items-center gap-2 bg-[#050811] p-1.5 rounded-xl border border-slate-800 text-xs">
-              <div className="px-2.5 py-1 text-center">
-                <span className="text-[10px] text-slate-500 block">Total</span>
-                <span className="font-bold text-white">{batchStats.total}</span>
+            {/* Contadores e Ações do lote */}
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="flex items-center gap-2 bg-[#050811] p-1.5 rounded-xl border border-slate-800 text-xs">
+                <div className="px-2.5 py-1 text-center">
+                  <span className="text-[10px] text-slate-500 block">Total</span>
+                  <span className="font-bold text-white">{batchStats.total}</span>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-800" />
+                <div className="px-2.5 py-1 text-center">
+                  <span className="text-[10px] text-slate-400 block">⚪ Disponíveis</span>
+                  <span className="font-bold text-slate-300">{batchStats.available}</span>
+                </div>
+                <div className="w-[1px] h-6 bg-slate-800" />
+                <div className="px-2.5 py-1 text-center">
+                  <span className="text-[10px] text-emerald-400 block">🟢 Configurados</span>
+                  <span className="font-bold text-emerald-400">{batchStats.configured}</span>
+                </div>
               </div>
-              <div className="w-[1px] h-6 bg-slate-800" />
-              <div className="px-2.5 py-1 text-center">
-                <span className="text-[10px] text-slate-400 block">⚪ Disponíveis</span>
-                <span className="font-bold text-slate-300">{batchStats.available}</span>
-              </div>
-              <div className="w-[1px] h-6 bg-slate-800" />
-              <div className="px-2.5 py-1 text-center">
-                <span className="text-[10px] text-emerald-400 block">🟢 Configurados</span>
-                <span className="font-bold text-emerald-400">{batchStats.configured}</span>
+
+              {/* Botões de Ação do Lote: Histórico e GERAR PLAQUINHAS */}
+              <div className="flex items-center gap-2">
+                <button
+                  id="btn-historico-lote"
+                  type="button"
+                  onClick={() => setIsHistoryOpen(true)}
+                  className="py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700/60"
+                  title="Histórico de Impressão deste lote"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Histórico</span>
+                </button>
+
+                <button
+                  id="btn-gerar-plaquinhas"
+                  type="button"
+                  onClick={() => setIsPlaqueGeneratorOpen(true)}
+                  className="py-2 px-4 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white text-xs sm:text-sm font-black flex items-center gap-2 shadow-lg shadow-blue-600/30 transition-all cursor-pointer shrink-0"
+                >
+                  <Printer className="w-4 h-4" />
+                  <span>🖨️ GERAR PLAQUINHAS</span>
+                </button>
               </div>
             </div>
           </div>
@@ -280,16 +314,27 @@ export function BatchesView({
                       </div>
                     </div>
 
-                    {/* Status Badge */}
-                    <span
-                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 ${
-                        isAvailable
-                          ? 'bg-slate-800/80 text-slate-300 border-slate-700'
-                          : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
-                      }`}
-                    >
-                      {isAvailable ? '⚪ Disponível' : '🟢 Configurado'}
-                    </span>
+                    {/* Status Badge + Impresso */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {qr.printed && (
+                        <span
+                          title="Este QR Code já foi gerado em PDF para plaquinha"
+                          className="text-[10px] font-bold tracking-wider px-2 py-0.5 rounded-full border bg-indigo-950/60 text-indigo-300 border-indigo-500/40 shrink-0 flex items-center gap-1"
+                        >
+                          <span>🖨️</span>
+                          <span>Impresso</span>
+                        </span>
+                      )}
+                      <span
+                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border shrink-0 ${
+                          isAvailable
+                            ? 'bg-slate-800/80 text-slate-300 border-slate-700'
+                            : 'bg-emerald-950/40 text-emerald-300 border-emerald-500/30'
+                        }`}
+                      >
+                        {isAvailable ? '⚪ Disponível' : '🟢 Configurado'}
+                      </span>
+                    </div>
                   </div>
 
                   {/* Destino atual ou cliente */}
@@ -472,19 +517,58 @@ export function BatchesView({
                     Criado em: {formattedDate}
                   </span>
 
-                  <button
-                    type="button"
-                    onClick={() => setSelectedBatchId(batch.id)}
-                    className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-colors cursor-pointer"
-                  >
-                    <span>ABRIR LOTE</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedBatchId(batch.id);
+                        setIsPlaqueGeneratorOpen(true);
+                      }}
+                      className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer border border-slate-700/60"
+                      title="Gerar plaquinhas para este lote"
+                    >
+                      <Printer className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Plaquinhas</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setSelectedBatchId(batch.id)}
+                      className="px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold flex items-center gap-1.5 shadow-md shadow-blue-600/30 transition-colors cursor-pointer"
+                    >
+                      <span>ABRIR LOTE</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
               </div>
             );
           })}
         </div>
+      )}
+
+      {/* MODAL 5 ETAPAS: GERADOR DE PLAQUINHAS A4 */}
+      {selectedBatch && (
+        <PlaqueGeneratorModal
+          isOpen={isPlaqueGeneratorOpen}
+          onClose={() => setIsPlaqueGeneratorOpen(false)}
+          batch={selectedBatch}
+          allBatchQRCodes={batchQRCodes}
+          userId={userId}
+          onPrintCompleted={() => {
+            // Callback opcional após geração do PDF
+          }}
+        />
+      )}
+
+      {/* MODAL: HISTÓRICO DE IMPRESSÕES DO LOTE */}
+      {selectedBatch && (
+        <PrintHistoryModal
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          batch={selectedBatch}
+          userId={userId}
+        />
       )}
     </div>
   );
