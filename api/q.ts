@@ -54,6 +54,75 @@ function normalizeUrl(url: string): string {
   return `https://${trimmed}`;
 }
 
+function renderUnconfiguredHtml(): string {
+  return `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Plaquinha Não Configurada</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      background-color: #070a12;
+      color: #e2e8f0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .card {
+      background-color: #0d121f;
+      border: 1px solid #1e293b;
+      border-radius: 20px;
+      padding: 40px 24px;
+      max-width: 380px;
+      width: 100%;
+      text-align: center;
+      box-shadow: 0 25px 30px -10px rgba(0, 0, 0, 0.6);
+    }
+    .icon-box {
+      width: 60px;
+      height: 60px;
+      border-radius: 16px;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #60a5fa;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 20px;
+      font-size: 26px;
+    }
+    h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      margin: 0 0 10px 0;
+      line-height: 1.4;
+    }
+    p {
+      font-size: 13px;
+      color: #94a3b8;
+      margin: 0;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon-box">▦</div>
+    <h1>Esta plaquinha ainda não foi configurada.</h1>
+    <p>O destino desta plaquinha será configurado em breve.</p>
+  </div>
+</body>
+</html>`;
+}
+
 function renderErrorHtml(title: string, message: string): string {
   return `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -175,6 +244,7 @@ async function fetchQRCode(slug: string) {
           slug: fields.slug?.stringValue || slug,
           destinationUrl: fields.destinationUrl?.stringValue || '',
           active: fields.active ? fields.active.booleanValue !== false : true,
+          status: fields.status?.stringValue || (fields.destinationUrl?.stringValue ? 'active' : 'available'),
           name: fields.name?.stringValue || '',
         },
       };
@@ -214,6 +284,7 @@ async function fetchQRCode(slug: string) {
               slug: fields.slug?.stringValue || slug,
               destinationUrl: fields.destinationUrl?.stringValue || '',
               active: fields.active ? fields.active.booleanValue !== false : true,
+              status: fields.status?.stringValue || (fields.destinationUrl?.stringValue ? 'active' : 'available'),
               name: fields.name?.stringValue || '',
             },
           };
@@ -292,10 +363,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return;
     }
 
-    const { destinationUrl, active } = result.data;
+    const { destinationUrl, active, status } = result.data;
+
+    // Se for um QR ainda Disponível (sem destino configurado), exibe página neutra
+    if (status === 'available' || !destinationUrl) {
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.end(renderUnconfiguredHtml());
+      return;
+    }
 
     // Verifica se está ativo
-    if (active === false) {
+    if (active === false || status === 'inactive') {
       res.statusCode = 403;
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.end(renderErrorHtml('QR Code Inativo', 'Este QR Code está temporariamente desativado pelo proprietário.'));

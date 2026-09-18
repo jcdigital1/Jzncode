@@ -205,6 +205,92 @@ export async function generateQRCodeDataUrl(
 }
 
 /**
+ * Retorna o nome de arquivo padronizado para plaquinha identificada (ex: google-037.png)
+ */
+export function getIdentifiedFilename(prefix: string, sequenceNumber: number, ext: 'png' | 'svg' = 'png'): string {
+  const cleanPrefix = (prefix || 'plaquinha')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  const seqStr = String(sequenceNumber).padStart(3, '0');
+  return `${cleanPrefix || 'plaquinha'}-${seqStr}.${ext}`;
+}
+
+/**
+ * Gera PNG de alta resolução para impressão de plaquinhas identificadas:
+ * - QR Code em alta resolução com quiet zone 100% preservada
+ * - Título em destaque (ex: GOOGLE 037 ou PLAQUINHA 037)
+ * - Código permanente (ex: Código: X8K4P9QA)
+ * - Texto NUNCA encosta nem invade os módulos do QR
+ */
+export async function generateIdentifiedQRCodeDataUrl(
+  text: string,
+  title: string,
+  code: string,
+  width = 1024
+): Promise<string> {
+  const qrCanvas = document.createElement('canvas');
+  await QRCode.toCanvas(qrCanvas, text, {
+    width,
+    margin: 2,
+    errorCorrectionLevel: 'H',
+    color: {
+      dark: '#0a0d14',
+      light: '#ffffff',
+    },
+  });
+
+  // Altura do rodapé para identificação visual (~18% da largura)
+  const footerHeight = Math.max(90, Math.round(width * 0.18));
+  const totalWidth = width;
+  const totalHeight = width + footerHeight;
+
+  const finalCanvas = document.createElement('canvas');
+  finalCanvas.width = totalWidth;
+  finalCanvas.height = totalHeight;
+  const ctx = finalCanvas.getContext('2d');
+  if (!ctx) {
+    return qrCanvas.toDataURL('image/png');
+  }
+
+  // 1. Fundo branco puro
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, totalWidth, totalHeight);
+
+  // 2. Desenha o QR Code acima
+  ctx.drawImage(qrCanvas, 0, 0, totalWidth, width);
+
+  // 3. Divisória sutil
+  ctx.strokeStyle = '#e2e8f0';
+  ctx.lineWidth = Math.max(1, Math.round(width * 0.0015));
+  ctx.beginPath();
+  const lineMargin = Math.round(width * 0.08);
+  ctx.moveTo(lineMargin, width);
+  ctx.lineTo(totalWidth - lineMargin, width);
+  ctx.stroke();
+
+  // 4. Texto 1: Título em destaque (ex: GOOGLE 037)
+  const titleFontSize = Math.round(footerHeight * 0.36);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#0f172a';
+  ctx.font = `800 ${titleFontSize}px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+  const titleY = width + Math.round(footerHeight * 0.38);
+  ctx.fillText((title || '').toUpperCase(), totalWidth / 2, titleY);
+
+  // 5. Texto 2: Código permanente (ex: Código: X8K4P9QA)
+  const codeFontSize = Math.round(footerHeight * 0.22);
+  ctx.fillStyle = '#64748b';
+  ctx.font = `600 ${codeFontSize}px monospace, -apple-system, BlinkMacSystemFont, sans-serif`;
+  const codeY = width + Math.round(footerHeight * 0.74);
+  ctx.fillText(`Código: ${code}`, totalWidth / 2, codeY);
+
+  return finalCanvas.toDataURL('image/png');
+}
+
+/**
  * Generates vector SVG string for maximum printing quality.
  * When `name` is provided, integrates a clean white footer with the name below the QR.
  */

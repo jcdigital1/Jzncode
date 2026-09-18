@@ -20,6 +20,28 @@ export interface DynamicQRCode {
   googlePlaceId?: string;
   googleBusinessId?: string;
   nfcReady?: boolean;
+  // Campos para geração em lote / plaquinhas
+  batchId?: string;
+  batchName?: string;
+  sequenceNumber?: number;
+  prefix?: string;
+  creationMode?: 'single' | 'bulk';
+  status?: 'available' | 'active' | 'inactive';
+  clientName?: string;
+}
+
+export interface QRBatch {
+  id: string;
+  userId: string;
+  name: string;
+  prefix: string;
+  quantity: number;
+  availableCount: number;
+  configuredCount: number;
+  startNumber: number;
+  endNumber: number;
+  createdAt: any;
+  updatedAt: any;
 }
 
 export interface GoogleBusiness {

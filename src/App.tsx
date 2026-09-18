@@ -2,7 +2,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { onAuthStateChanged, signOut, sendPasswordResetEmail, User } from 'firebase/auth';
 import { collection, query, where, onSnapshot } from 'firebase/firestore';
 import { auth, db } from './firebase';
-import { DynamicQRCode } from './types';
+import { DynamicQRCode, QRBatch } from './types';
 import { RedirectView } from './components/RedirectView';
 import { LoginView } from './components/LoginView';
 import { QRCodeCard } from './components/QRCodeCard';
@@ -10,6 +10,9 @@ import { CreateQRModal } from './components/CreateQRModal';
 import { EditDestinationModal } from './components/EditDestinationModal';
 import { DeleteConfirmModal } from './components/DeleteConfirmModal';
 import { GoogleReviewGenerator } from './components/GoogleReviewGenerator';
+import { BulkQRGeneratorModal } from './components/BulkQRGeneratorModal';
+import { BatchesView } from './components/BatchesView';
+import { ConfigurePlaqueDestinationModal } from './components/ConfigurePlaqueDestinationModal';
 import {
   QrCode,
   Plus,
@@ -30,6 +33,8 @@ import {
   ArrowRight,
   Mail,
   Lock,
+  Layers,
+  ChevronRight,
 } from 'lucide-react';
 
 /**
@@ -55,7 +60,7 @@ function getSlugFromCurrentUrl(): string | null {
 
 const PAGE_SIZE = 20;
 
-type NavigationTab = 'dashboard' | 'qrcodes' | 'google' | 'account';
+type NavigationTab = 'dashboard' | 'qrcodes' | 'batches' | 'google' | 'account';
 
 export default function App() {
   const [activeSlug, setActiveSlug] = useState<string | null>(() => getSlugFromCurrentUrl());
@@ -69,6 +74,11 @@ export default function App() {
   const [qrCodes, setQrCodes] = useState<DynamicQRCode[]>([]);
   const [dataLoading, setDataLoading] = useState(true);
 
+  // User's Batches (Lotes de QR Codes em Massa)
+  const [batches, setBatches] = useState<QRBatch[]>([]);
+  const [batchesLoading, setBatchesLoading] = useState(true);
+  const [selectedBatchId, setSelectedBatchId] = useState<string | null>(null);
+
   // Filters & Search
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'inactive'>('all');
@@ -76,6 +86,8 @@ export default function App() {
 
   // Modals state
   const [isCreateOpen, setIsCreateOpen] = useState(false);
+  const [isBulkCreateOpen, setIsBulkCreateOpen] = useState(false);
+  const [configuringPlaqueQR, setConfiguringPlaqueQR] = useState<DynamicQRCode | null>(null);
   const [editingQR, setEditingQR] = useState<DynamicQRCode | null>(null);
   const [deletingQR, setDeletingQR] = useState<DynamicQRCode | null>(null);
 
@@ -137,6 +149,13 @@ export default function App() {
             updatedAt: data.updatedAt || 0,
             scansCount: data.scansCount || 0,
             lastScanAt: data.lastScanAt || null,
+            batchId: data.batchId,
+            batchName: data.batchName,
+            sequenceNumber: data.sequenceNumber,
+            prefix: data.prefix,
+            creationMode: data.creationMode,
+            status: data.status || (data.destinationUrl ? 'active' : 'available'),
+            clientName: data.clientName,
           });
         });
 
@@ -159,6 +178,66 @@ export default function App() {
       (error) => {
         console.error('Erro ao escutar dynamicQRCodes do usuário:', error);
         setDataLoading(false);
+      }
+    );
+
+    return () => unsubscribe();
+  }, [user]);
+
+  // Firestore listener: isolated to the authenticated user's batches (Lotes de Plaquinhas)
+  useEffect(() => {
+    if (!user) {
+      setBatches([]);
+      setBatchesLoading(false);
+      return;
+    }
+
+    setBatchesLoading(true);
+
+    const batchesQuery = query(
+      collection(db, 'qrBatches'),
+      where('userId', '==', user.uid)
+    );
+
+    const unsubscribe = onSnapshot(
+      batchesQuery,
+      (snapshot) => {
+        const list: QRBatch[] = [];
+        snapshot.forEach((docSnap) => {
+          const data = docSnap.data();
+          list.push({
+            id: docSnap.id,
+            userId: data.userId || user.uid,
+            name: data.name || 'Lote sem nome',
+            prefix: data.prefix || 'Plaquinha',
+            quantity: data.quantity || 0,
+            availableCount: data.availableCount ?? data.quantity,
+            configuredCount: data.configuredCount ?? 0,
+            startNumber: data.startNumber || 1,
+            endNumber: data.endNumber || data.quantity,
+            createdAt: data.createdAt || 0,
+            updatedAt: data.updatedAt || 0,
+          });
+        });
+
+        list.sort((a, b) => {
+          const timeA =
+            typeof a.createdAt?.toMillis === 'function'
+              ? a.createdAt.toMillis()
+              : Number(a.createdAt || 0);
+          const timeB =
+            typeof b.createdAt?.toMillis === 'function'
+              ? b.createdAt.toMillis()
+              : Number(b.createdAt || 0);
+          return timeB - timeA;
+        });
+
+        setBatches(list);
+        setBatchesLoading(false);
+      },
+      (err) => {
+        console.error('Erro ao escutar qrBatches:', err);
+        setBatchesLoading(false);
       }
     );
 
@@ -321,11 +400,41 @@ export default function App() {
 
             <button
               type="button"
+              onClick={() => {
+                setSelectedBatchId(null);
+                setActiveTab('batches');
+              }}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                activeTab === 'batches'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+              }`}
+            >
+              <Layers className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Meus Lotes</span>
+              {batches.length > 0 && (
+                <span className="bg-indigo-950 text-indigo-300 border border-indigo-500/30 text-[10px] px-1.5 py-0.5 rounded-full font-mono">
+                  {batches.length}
+                </span>
+              )}
+            </button>
+
+            <button
+              type="button"
               onClick={() => setIsCreateOpen(true)}
               className="px-3 py-1.5 rounded-lg text-xs font-bold text-blue-300 hover:text-blue-200 hover:bg-blue-950/50 border border-blue-500/30 flex items-center gap-1 transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>+ Novo QR Code</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsBulkCreateOpen(true)}
+              className="px-3 py-1.5 rounded-lg text-xs font-bold text-indigo-300 hover:text-indigo-200 hover:bg-indigo-950/50 border border-indigo-500/30 flex items-center gap-1 transition-colors cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>▦ Gerar em Massa</span>
             </button>
 
             <button
@@ -367,6 +476,15 @@ export default function App() {
               <span>Novo</span>
             </button>
 
+            <button
+              type="button"
+              onClick={() => setIsBulkCreateOpen(true)}
+              className="md:hidden py-1.5 px-2 rounded-xl bg-indigo-950/60 hover:bg-indigo-900/60 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span>Massa</span>
+            </button>
+
             {/* Perfil / Sair */}
             <button
               type="button"
@@ -405,6 +523,22 @@ export default function App() {
           >
             <ListFilter className="w-3.5 h-3.5" />
             <span>QR Codes</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedBatchId(null);
+              setActiveTab('batches');
+            }}
+            className={`flex-1 py-1.5 px-1 rounded-lg text-[11px] font-semibold flex flex-col items-center gap-0.5 transition-colors ${
+              activeTab === 'batches'
+                ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30'
+                : 'text-slate-400'
+            }`}
+          >
+            <Layers className="w-3.5 h-3.5" />
+            <span>Lotes</span>
           </button>
 
           <button
@@ -478,9 +612,9 @@ export default function App() {
               </div>
             </div>
 
-            {/* ATALHOS RÁPIDOS */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {/* Card Atalho Novo QR Code */}
+            {/* ATALHOS RÁPIDOS PRINCIPAIS */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {/* Card Atalho 1: Novo QR Code Individual */}
               <div
                 onClick={() => setIsCreateOpen(true)}
                 className="bg-[#0d121f] border border-blue-500/30 hover:border-blue-500/60 rounded-2xl p-4 sm:p-5 shadow-md flex items-center justify-between gap-3 cursor-pointer transition-all hover:bg-[#111827]"
@@ -488,10 +622,10 @@ export default function App() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-blue-400 font-bold text-sm sm:text-base">
                     <Plus className="w-4 h-4" />
-                    <span>Criar QR Code Dinâmico</span>
+                    <span>+ NOVO QR CODE</span>
                   </div>
                   <p className="text-xs text-slate-400 leading-relaxed">
-                    Crie um código permanente para sites, catálogos, WhatsApp ou redes sociais.
+                    Crie um código dinâmico individual para cardápios, sites ou WhatsApp.
                   </p>
                 </div>
                 <div className="w-9 h-9 rounded-xl bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400 shrink-0">
@@ -499,7 +633,26 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Card Atalho Gerador de Avaliação Google */}
+              {/* Card Atalho 2: Gerar em Massa */}
+              <div
+                onClick={() => setIsBulkCreateOpen(true)}
+                className="bg-[#0d121f] border border-indigo-500/30 hover:border-indigo-500/60 rounded-2xl p-4 sm:p-5 shadow-md flex items-center justify-between gap-3 cursor-pointer transition-all hover:bg-[#111827]"
+              >
+                <div className="space-y-1">
+                  <div className="flex items-center gap-2 text-indigo-400 font-bold text-sm sm:text-base">
+                    <Layers className="w-4 h-4" />
+                    <span>▦ GERAR EM MASSA</span>
+                  </div>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Gere lotes de até 100 QR Codes com códigos permanentes para plaquinhas.
+                  </p>
+                </div>
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 shrink-0">
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+
+              {/* Card Atalho 3: Gerador de Avaliação Google */}
               <div
                 onClick={() => setActiveTab('google')}
                 className="bg-[#0d121f] border border-amber-500/30 hover:border-amber-500/60 rounded-2xl p-4 sm:p-5 shadow-md flex items-center justify-between gap-3 cursor-pointer transition-all hover:bg-[#111827]"
@@ -507,7 +660,7 @@ export default function App() {
                 <div className="space-y-1">
                   <div className="flex items-center gap-2 text-amber-400 font-bold text-sm sm:text-base">
                     <Star className="w-4 h-4 fill-amber-400" />
-                    <span>⭐ Gerador de Avaliação Google</span>
+                    <span>⭐ AVALIAÇÃO GOOGLE</span>
                   </div>
                   <p className="text-xs text-slate-400 leading-relaxed">
                     Converta o link da sua empresa no Google Maps em link direto de avaliação e plaquinha.
@@ -518,6 +671,67 @@ export default function App() {
                 </div>
               </div>
             </div>
+
+            {/* SEÇÃO LOTES DE PLAQUINHAS NO DASHBOARD (Se houver lotes) */}
+            {batches.length > 0 && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm sm:text-base font-bold text-white flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-indigo-400" />
+                    <span>Meus Lotes de Plaquinhas</span>
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedBatchId(null);
+                      setActiveTab('batches');
+                    }}
+                    className="text-xs font-semibold text-blue-400 hover:text-blue-300 flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>Ver todos os lotes ({batches.length})</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {batches.slice(0, 2).map((batch) => {
+                    const batchItems = qrCodes.filter((q) => q.batchId === batch.id);
+                    const total = batchItems.length || batch.quantity;
+                    const available = batchItems.filter(
+                      (q) => q.status === 'available' || !q.destinationUrl
+                    ).length;
+                    const configured = total - available;
+
+                    return (
+                      <div
+                        key={batch.id}
+                        className="bg-[#0d121f] border border-slate-800 hover:border-indigo-500/40 rounded-xl p-3.5 flex items-center justify-between gap-3 transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <h4 className="text-xs sm:text-sm font-bold text-white truncate">
+                            {batch.name}
+                          </h4>
+                          <p className="text-[11px] text-slate-400 mt-0.5">
+                            {total} QRs • ⚪ {available} disp. • 🟢 {configured} conf.
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedBatchId(batch.id);
+                            setActiveTab('batches');
+                          }}
+                          className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/40 text-indigo-300 border border-indigo-500/30 text-xs font-bold flex items-center gap-1 cursor-pointer shrink-0"
+                        >
+                          <span>Abrir</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* SEÇÃO RECENTES & LISTA NO DASHBOARD */}
             <div className="space-y-3">
@@ -563,7 +777,13 @@ export default function App() {
                     <QRCodeCard
                       key={qr.slug || qr.id}
                       qr={qr}
-                      onEdit={(target) => setEditingQR(target)}
+                      onEdit={(target) => {
+                        if (target.status === 'available' || target.sequenceNumber) {
+                          setConfiguringPlaqueQR(target);
+                        } else {
+                          setEditingQR(target);
+                        }
+                      }}
                       onDelete={(target) => setDeletingQR(target)}
                     />
                   ))}
@@ -681,7 +901,13 @@ export default function App() {
                   <QRCodeCard
                     key={qr.slug || qr.id}
                     qr={qr}
-                    onEdit={(target) => setEditingQR(target)}
+                    onEdit={(target) => {
+                      if (target.status === 'available' || target.sequenceNumber) {
+                        setConfiguringPlaqueQR(target);
+                      } else {
+                        setEditingQR(target);
+                      }
+                    }}
                     onDelete={(target) => setDeletingQR(target)}
                   />
                 ))}
@@ -700,6 +926,21 @@ export default function App() {
                 )}
               </div>
             )}
+          </div>
+        )}
+
+        {/* ========================================================
+            ABA: ▦ MEUS LOTES (QR CODES EM MASSA)
+           ======================================================== */}
+        {activeTab === 'batches' && (
+          <div className="animate-fadeIn">
+            <BatchesView
+              batches={batches}
+              qrCodes={qrCodes}
+              onOpenCreateBulk={() => setIsBulkCreateOpen(true)}
+              onConfigureQR={(qr) => setConfiguringPlaqueQR(qr)}
+              initialSelectedBatchId={selectedBatchId}
+            />
           </div>
         )}
 
@@ -802,13 +1043,34 @@ export default function App() {
         )}
       </main>
 
-      {/* MODAL 1: CRIAR NOVO QR CODE */}
+      {/* MODAL 1: CRIAR NOVO QR CODE INDIVIDUAL */}
       <CreateQRModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onCreated={(newQR) => {
           setIsCreateOpen(false);
           setActiveTab('qrcodes');
+        }}
+      />
+
+      {/* MODAL 2: GERAR QR CODES EM MASSA */}
+      <BulkQRGeneratorModal
+        isOpen={isBulkCreateOpen}
+        onClose={() => setIsBulkCreateOpen(false)}
+        user={user}
+        onBatchCreated={(batch) => {
+          setSelectedBatchId(batch.id);
+          setActiveTab('batches');
+        }}
+      />
+
+      {/* MODAL 3: CONFIGURAR DESTINO DE PLAQUINHA */}
+      <ConfigurePlaqueDestinationModal
+        isOpen={!!configuringPlaqueQR}
+        onClose={() => setConfiguringPlaqueQR(null)}
+        qr={configuringPlaqueQR}
+        onUpdated={() => {
+          setConfiguringPlaqueQR(null);
         }}
       />
 

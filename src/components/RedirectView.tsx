@@ -20,6 +20,7 @@ function isValidHttpUrl(urlStr: string): boolean {
 
 export function RedirectView({ slug }: RedirectViewProps) {
   const [error, setError] = useState<string | null>(null);
+  const [isUnconfigured, setIsUnconfigured] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -65,13 +66,19 @@ export function RedirectView({ slug }: RedirectViewProps) {
           return;
         }
 
+        // Se estiver como Disponível ou sem URL de destino configurada ainda
+        const rawDest = (targetData.destinationUrl || '').trim();
+        if (targetData.status === 'available' || !rawDest) {
+          setIsUnconfigured(true);
+          return;
+        }
+
         // Check if QR Code is active
-        if (targetData.active === false) {
+        if (targetData.active === false || targetData.status === 'inactive') {
           setError('Este QR Code está temporariamente inativo.');
           return;
         }
 
-        const rawDest = (targetData.destinationUrl || '').trim();
         const destination = /^https?:\/\//i.test(rawDest) ? rawDest : `https://${rawDest}`;
 
         if (!destination || !isValidHttpUrl(destination)) {
@@ -102,6 +109,31 @@ export function RedirectView({ slug }: RedirectViewProps) {
       isMounted = false;
     };
   }, [slug]);
+
+  // Se o QR estiver disponível (aguardando configuração de destino)
+  if (isUnconfigured) {
+    return (
+      <div
+        id="plaquinha-unconfigured-container"
+        className="min-h-screen bg-[#070a12] text-slate-100 flex items-center justify-center p-4 font-sans"
+      >
+        <div
+          id="plaquinha-unconfigured-card"
+          className="w-full max-w-sm bg-[#0d121f] border border-slate-800 rounded-2xl p-8 shadow-2xl text-center"
+        >
+          <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto mb-4 text-2xl font-mono">
+            ▦
+          </div>
+          <h1 className="text-lg font-bold text-white mb-2">
+            Esta plaquinha ainda não foi configurada.
+          </h1>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            O destino desta plaquinha será disponibilizado em breve pelo responsável.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // Se houver erro (QR inexistente, inativo ou URL inválida), exibe página simples de erro
   if (error) {

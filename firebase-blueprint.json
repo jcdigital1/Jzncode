@@ -1,0 +1,85 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Dados cadastrais do usuário",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" }
+      },
+      "required": ["uid", "email"]
+    },
+    "DynamicQRCode": {
+      "title": "DynamicQRCode",
+      "description": "QR Code dinâmico permanente com destino configurável",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "destinationUrl": { "type": "string" },
+        "active": { "type": "boolean" },
+        "scansCount": { "type": "number" },
+        "batchId": { "type": "string" },
+        "batchName": { "type": "string" },
+        "sequenceNumber": { "type": "number" },
+        "prefix": { "type": "string" },
+        "creationMode": { "type": "string", "enum": ["single", "bulk"] },
+        "status": { "type": "string", "enum": ["available", "active", "inactive"] },
+        "clientName": { "type": "string" }
+      },
+      "required": ["userId", "slug"]
+    },
+    "QRBatch": {
+      "title": "QRBatch",
+      "description": "Lote de QR Codes dinâmicos gerados em massa",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "prefix": { "type": "string" },
+        "quantity": { "type": "number" },
+        "availableCount": { "type": "number" },
+        "configuredCount": { "type": "number" },
+        "startNumber": { "type": "number" },
+        "endNumber": { "type": "number" }
+      },
+      "required": ["id", "userId", "name", "prefix", "quantity"]
+    },
+    "GoogleBusiness": {
+      "title": "GoogleBusiness",
+      "description": "Empresa vinculada do Google Maps para avaliações",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "placeId": { "type": "string" },
+        "reviewUrl": { "type": "string" }
+      },
+      "required": ["userId", "name", "placeId", "reviewUrl"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "UserProfile" },
+      "description": "Perfil do usuário proprietário"
+    },
+    "/dynamicQRCodes/{qrId}": {
+      "schema": { "$ref": "DynamicQRCode" },
+      "description": "QR Codes dinâmicos individuais e em lote"
+    },
+    "/qrBatches/{batchId}": {
+      "schema": { "$ref": "QRBatch" },
+      "description": "Lotes de QR Codes gerados em massa"
+    },
+    "/googleBusinesses/{businessId}": {
+      "schema": { "$ref": "GoogleBusiness" },
+      "description": "Empresas salvas para avaliação Google"
+    }
+  }
+}

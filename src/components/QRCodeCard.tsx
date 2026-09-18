@@ -3,6 +3,8 @@ import { DynamicQRCode } from '../types';
 import {
   generateQRCodeDataUrl,
   generateQRCodeSvg,
+  generateIdentifiedQRCodeDataUrl,
+  getIdentifiedFilename,
   getQRCodeFilename,
   downloadDataUrl,
   downloadSvg,
@@ -21,6 +23,7 @@ import {
   ChevronDown,
   Copy,
   Check,
+  Settings,
 } from 'lucide-react';
 
 interface QRCodeCardProps {
@@ -38,9 +41,12 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
 
   // The dynamic QR code embeds ONLY the permanent dynamic URL
   const intermediateUrl = getDynamicQRUrl(qr.slug);
-  const isActive = qr.active !== false;
+  const isAvailable = qr.status === 'available' || !qr.destinationUrl;
+  const isActive = qr.active !== false && !isAvailable;
   const scans = qr.scansCount || 0;
   const lastScan = formatScanDate(qr.lastScanAt);
+  const isBulkPlaque = !!qr.sequenceNumber || qr.creationMode === 'bulk';
+  const seqFormatted = qr.sequenceNumber ? String(qr.sequenceNumber).padStart(3, '0') : null;
 
   useEffect(() => {
     let active = true;
@@ -87,9 +93,20 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
 
   const handleDownloadPng = async () => {
     try {
-      const fullResUrl = await generateQRCodeDataUrl(intermediateUrl, qr.name, 1024);
-      const filename = getQRCodeFilename(qr.name, 'png');
-      downloadDataUrl(fullResUrl, filename);
+      if (isBulkPlaque && qr.sequenceNumber) {
+        const fullResUrl = await generateIdentifiedQRCodeDataUrl(
+          intermediateUrl,
+          qr.name,
+          qr.slug,
+          1024
+        );
+        const filename = getIdentifiedFilename(qr.prefix || 'plaquinha', qr.sequenceNumber, 'png');
+        downloadDataUrl(fullResUrl, filename);
+      } else {
+        const fullResUrl = await generateQRCodeDataUrl(intermediateUrl, qr.name, 1024);
+        const filename = getQRCodeFilename(qr.name, 'png');
+        downloadDataUrl(fullResUrl, filename);
+      }
       setDownloadMenuOpen(false);
     } catch (e) {
       console.error('Erro ao baixar PNG:', e);
@@ -131,8 +148,13 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
 
         {/* Informações: Nome + Ativo / Código / Destino / Leituras */}
         <div className="min-w-0 flex-1 space-y-0.5 text-left">
-          {/* Linha 1: Nome do QR + Badge Ativo */}
+          {/* Linha 1: Nome do QR + Badge Ativo / Disponível */}
           <div className="flex items-center gap-2 flex-wrap">
+            {seqFormatted && (
+              <span className="font-mono text-xs font-black text-blue-400 bg-blue-950/50 px-1.5 py-0.5 rounded border border-blue-500/30">
+                {seqFormatted}
+              </span>
+            )}
             <h3
               id={`qr-title-${qr.slug}`}
               title={qr.name}
@@ -140,21 +162,32 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
             >
               {qr.name}
             </h3>
-            <span
-              id={`qr-status-${qr.slug}`}
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${
-                isActive
-                  ? 'bg-emerald-950/70 text-emerald-400 border border-emerald-500/30'
-                  : 'bg-amber-950/70 text-amber-400 border border-amber-500/30'
-              }`}
-            >
+
+            {isAvailable ? (
               <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isActive ? 'bg-emerald-400' : 'bg-amber-400'
+                id={`qr-status-${qr.slug}`}
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider bg-slate-800 text-slate-300 border border-slate-700"
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                <span>Disponível</span>
+              </span>
+            ) : (
+              <span
+                id={`qr-status-${qr.slug}`}
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold tracking-wider ${
+                  isActive
+                    ? 'bg-emerald-950/70 text-emerald-400 border border-emerald-500/30'
+                    : 'bg-amber-950/70 text-amber-400 border border-amber-500/30'
                 }`}
-              />
-              <span>{isActive ? 'Ativo' : 'Inativo'}</span>
-            </span>
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${
+                    isActive ? 'bg-emerald-400' : 'bg-amber-400'
+                  }`}
+                />
+                <span>{isActive ? 'Ativo' : 'Inativo'}</span>
+              </span>
+            )}
           </div>
 
           {/* Linha 2: Código */}
@@ -167,7 +200,7 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
               type="button"
               onClick={handleCopySlug}
               title="Copiar link dinâmico"
-              className="p-0.5 text-slate-400 hover:text-blue-300 rounded transition-colors"
+              className="p-0.5 text-slate-400 hover:text-blue-300 rounded transition-colors cursor-pointer"
             >
               {copiedSlug ? (
                 <Check className="w-3 h-3 text-emerald-400" />
@@ -180,21 +213,30 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
           {/* Linha 3: Destino */}
           <div className="flex items-center gap-1.5 text-xs text-slate-400 truncate">
             <span className="text-slate-500 text-[11px] shrink-0">Destino:</span>
-            <span
-              className="text-[11px] font-mono text-slate-300 truncate max-w-[180px] sm:max-w-[240px] md:max-w-[320px]"
-              title={qr.destinationUrl}
-            >
-              {displayDest || qr.destinationUrl}
-            </span>
-            <a
-              href={qr.destinationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              title="Abrir destino em nova aba"
-              className="p-0.5 text-blue-400 hover:text-blue-300 shrink-0"
-            >
-              <ExternalLink className="w-3 h-3" />
-            </a>
+            {isAvailable ? (
+              <span className="text-[11px] text-slate-500 italic">
+                Ainda não configurado
+              </span>
+            ) : (
+              <>
+                <span
+                  className="text-[11px] font-mono text-slate-300 truncate max-w-[180px] sm:max-w-[240px] md:max-w-[320px]"
+                  title={qr.destinationUrl}
+                >
+                  {qr.clientName ? `[${qr.clientName}] ` : ''}
+                  {displayDest || qr.destinationUrl}
+                </span>
+                <a
+                  href={qr.destinationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Abrir destino em nova aba"
+                  className="p-0.5 text-blue-400 hover:text-blue-300 shrink-0"
+                >
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </>
+            )}
           </div>
 
           {/* Linha 4: Leituras */}
@@ -211,17 +253,22 @@ export function QRCodeCard({ qr, onEdit, onDelete }: QRCodeCardProps) {
         </div>
       </div>
 
-      {/* LADO DIREITO: Botões de Ação [ ✏ Editar ] [ ↓ Baixar ] [ 🗑 Excluir ] */}
+      {/* LADO DIREITO: Botões de Ação [ ✏ Editar/Configurar ] [ ↓ Baixar ] [ 🗑 Excluir ] */}
       <div className="flex items-center justify-end gap-1.5 shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-800/80">
-        {/* ✏ Editar */}
+        {/* ✏ Editar / Configurar */}
         <button
           id={`btn-edit-${qr.slug}`}
           type="button"
           onClick={() => onEdit(qr)}
-          className="py-1.5 px-2.5 rounded-lg bg-[#050811] hover:bg-slate-800 text-slate-300 hover:text-white text-xs font-semibold flex items-center gap-1 transition-colors border border-slate-800 cursor-pointer"
+          className={`py-1.5 px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer ${
+            isAvailable
+              ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-sm'
+              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700'
+          }`}
+          title={isAvailable ? 'Configurar destino do QR Code' : 'Editar link de destino'}
         >
-          <Edit3 className="w-3.5 h-3.5 text-blue-400" />
-          <span>Editar</span>
+          {isAvailable ? <Settings className="w-3.5 h-3.5" /> : <Edit3 className="w-3.5 h-3.5" />}
+          <span>{isAvailable ? 'Configurar' : 'Editar'}</span>
         </button>
 
         {/* ↓ Baixar */}
